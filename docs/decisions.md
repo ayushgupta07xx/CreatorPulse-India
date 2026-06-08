@@ -19,3 +19,13 @@
 ## ADR-0005 — YouTube Data API v3 only for v1; Instagram is v2 future work
 **Decision:** v1 ingests only via the official YouTube Data API v3. Instagram (and X, Twitch, etc.) are scoped out behind an abstract `CreatorSource` interface.
 **Why:** YouTube has a free, documented API with predictable quotas. Instagram has no equivalent public API; the alternatives are TOS-restricted scraping or paid services. Scoping to YouTube keeps v1 legally clean and fully reproducible.
+
+## ADR-0006 — Alembic owns the operational layer; dbt owns the dimensional marts
+
+**Status:** Accepted (Day 2)
+
+**Context:** Day 2 builds the Postgres schema; Day 4 builds the dbt warehouse. Both could plausibly manage the `staging.*` and `marts.*` tables, risking an ownership collision (dbt dropping or recreating tables the ingest pipeline writes to directly).
+
+**Decision:** Alembic owns only the operational layer the Python pipeline writes to: `raw.youtube_channels` / `raw.youtube_videos` (append-only JSONB), the normalized `staging.channels` / `staging.channel_metrics_daily` / `staging.videos`, and `marts.channel_embeddings` (pgvector 384-dim, ML-written). dbt owns the dimensional marts (`dim_channel`, `dim_niche`, `dim_date`, `fact_channel_metrics_daily`, `fact_video`, `mart_*`), reading `staging.*` as sources. dbt never manages `channel_embeddings`.
+
+**Consequences:** No dbt/Alembic collision. `marts` is shared but table names are disjoint. The SCD2 snapshot on `dim_channel` (Day 4) reads from `staging.channels`.

@@ -20,7 +20,7 @@ import csv
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import requests
@@ -97,9 +97,7 @@ def resolve(handle: str, key: str, quota: Quota, session: requests.Session) -> d
 def to_row(item: dict, handle: str, niche: str) -> dict:
     snip = item.get("snippet", {})
     stats = item.get("statistics", {})
-    uploads = (
-        item.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads", "")
-    )
+    uploads = item.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads", "")
     return {
         "channel_id": item.get("id", ""),
         "handle": handle,
@@ -111,7 +109,7 @@ def to_row(item: dict, handle: str, niche: str) -> dict:
         "view_count": int(stats.get("viewCount", 0) or 0),
         "video_count": int(stats.get("videoCount", 0) or 0),
         "uploads_playlist_id": uploads,
-        "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "source": "seed",
     }
 
@@ -140,8 +138,10 @@ def main() -> int:
     pending = [(h, n) for h, n in handles if h.lower() not in done]
     if args.limit:
         pending = pending[: args.limit]
-    print(f"{len(handles)} handles in seed file; {len(done)} already resolved; "
-          f"processing {len(pending)} now.")
+    print(
+        f"{len(handles)} handles in seed file; {len(done)} already resolved; "
+        f"processing {len(pending)} now."
+    )
 
     quota = Quota()
     kept: list[dict] = []
@@ -156,17 +156,23 @@ def main() -> int:
             row = to_row(item, handle, niche)
             if keep(row, args.min_subs):
                 kept.append(row)
-                print(f"  [{i}/{len(pending)}] @{handle:<28} OK  "
-                      f"{row['subscriber_count']:>10,} subs  {row['niche']}")
+                print(
+                    f"  [{i}/{len(pending)}] @{handle:<28} OK  "
+                    f"{row['subscriber_count']:>10,} subs  {row['niche']}"
+                )
             else:
-                dropped.append(f"@{handle} (filtered: country={row['country'] or 'NA'}, "
-                               f"subs={row['subscriber_count']})")
+                dropped.append(
+                    f"@{handle} (filtered: country={row['country'] or 'NA'}, "
+                    f"subs={row['subscriber_count']})"
+                )
                 print(f"  [{i}/{len(pending)}] @{handle:<28} DROP filtered")
             time.sleep(0.05)
 
     all_rows = existing + kept
-    print(f"\nResolved+kept this run: {len(kept)} | dropped: {len(dropped)} | "
-          f"total in file: {len(all_rows)}")
+    print(
+        f"\nResolved+kept this run: {len(kept)} | dropped: {len(dropped)} | "
+        f"total in file: {len(all_rows)}"
+    )
     print(f"Quota used: {quota.report()}")
 
     if args.dry_run:

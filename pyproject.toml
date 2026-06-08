@@ -12,6 +12,8 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "Ayush Gupta" }]
 
 dependencies = [
+    "psycopg2-binary>=2.9",
+    "pgvector>=0.3",
   "requests>=2.32",
   "python-dotenv>=1.0",
   "python-youtube>=0.9",
