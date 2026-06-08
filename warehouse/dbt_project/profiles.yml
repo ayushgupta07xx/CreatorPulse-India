@@ -1,0 +1,13 @@
+creatorpulse:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DBT_PG_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_PG_PORT', 5436) | as_number }}"
+      user: "{{ env_var('DBT_PG_USER', 'creatorpulse') }}"
+      password: "{{ env_var('DBT_PG_PASSWORD', 'creatorpulse') }}"
+      dbname: "{{ env_var('DBT_PG_DBNAME', 'creatorpulse') }}"
+      schema: "{{ env_var('DBT_PG_SCHEMA', 'analytics') }}"
+      threads: 4
+      sslmode: "{{ env_var('DBT_PG_SSLMODE', 'prefer') }}"

@@ -1,0 +1,101 @@
+version: 2
+
+models:
+  - name: int_channel_metrics_history
+    description: "Per-channel metric time series with lagged previous values."
+    columns:
+      - name: channel_id
+        tests:
+          - not_null
+
+  - name: int_channel_growth_daily
+    description: "Per-snapshot subscriber/view/video deltas + normalized growth. Null until >=2 snapshots exist."
+    columns:
+      - name: channel_id
+        tests:
+          - not_null
+
+  - name: int_channel_growth_velocity
+    description: "Per-channel growth velocity/anomaly features (fraud inputs)."
+    columns:
+      - name: channel_id
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('stg_channels')
+              field: channel_id
+
+  - name: int_video_engagement
+    description: "Per-video engagement ratios."
+    columns:
+      - name: video_id
+        tests:
+          - unique
+          - not_null
+      - name: channel_id
+        tests:
+          - not_null
+      - name: engagement_rate
+        description: "(likes + comments) / views. Nullable when views = 0."
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 2
+
+  - name: int_channel_video_agg
+    description: "Per-channel video aggregates (mean/median engagement, views, cadence inputs)."
+    columns:
+      - name: channel_id
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('stg_channels')
+              field: channel_id
+
+  - name: int_channel_engagement_distribution
+    description: "Per-channel engagement CV + mean/median ratio (uneven-engagement signal)."
+    columns:
+      - name: channel_id
+        tests:
+          - unique
+          - not_null
+
+  - name: int_channel_cadence
+    description: "Per-channel inter-video upload gap statistics."
+    columns:
+      - name: channel_id
+        tests:
+          - unique
+          - not_null
+
+  - name: int_video_recent_window
+    description: "Per-channel last 30/90-day recency aggregates."
+    columns:
+      - name: channel_id
+        tests:
+          - unique
+          - not_null
+
+  - name: int_niche_metrics
+    description: "Niche-level rollups."
+    columns:
+      - name: niche
+        tests:
+          - unique
+          - not_null
+
+  - name: int_channel_base
+    description: "Denormalized channel spine: master + latest metric + last-upload recency."
+    columns:
+      - name: channel_id
+        tests:
+          - unique
+          - not_null
+      - name: subscriber_count
+        tests:
+          - not_null
+      - name: niche
+        tests:
+          - not_null

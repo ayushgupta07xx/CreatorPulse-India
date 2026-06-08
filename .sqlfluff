@@ -1,8 +1,14 @@
 [sqlfluff]
 dialect = postgres
-templater = jinja
+templater = dbt
 max_line_length = 100
-# Day 4 switches templater = dbt once the dbt project is wired.
+exclude_rules = ST06, AM03, RF04
+
+[sqlfluff:templater:dbt]
+project_dir = warehouse/dbt_project
+profiles_dir = warehouse/dbt_project
+profile = creatorpulse
+target = dev
 
 [sqlfluff:rules:capitalisation.keywords]
 capitalisation_policy = lower

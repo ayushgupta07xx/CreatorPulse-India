@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: staging
+    description: >
+      Alembic-owned operational/normalized layer. dbt reads these tables as
+      sources ONLY and never materializes into this schema (ownership boundary,
+      ADR-0006/0007).
+    database: creatorpulse
+    schema: staging
+    tables:
+      - name: channels
+        description: "Normalized channel master, upserted on channel_id."
+      - name: channel_metrics_daily
+        description: "Daily channel metrics time series. Grain: (channel_id, metric_date)."
+      - name: videos
+        description: >
+          Cumulative video upsert history (latest N/channel/run, never deleted).
+          Grain: video_id; the universe of videos grows over time.

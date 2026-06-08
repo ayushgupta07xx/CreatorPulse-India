@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: stg_channels
+    description: "Cleaned, typed channel master. One row per channel_id."
+    columns:
+      - name: channel_id
+        description: "YouTube channel id (UC...). Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: subscriber_count
+        tests:
+          - not_null
+      - name: niche
+        description: "Editorial niche label (nullable until classified)."
+
+  - name: stg_channel_metrics_daily
+    description: "Cleaned daily channel metrics. Grain: (channel_id, metric_date)."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - channel_id
+            - metric_date
+    columns:
+      - name: channel_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_channels')
+              field: channel_id
+      - name: metric_date
+        tests:
+          - not_null
+
+  - name: stg_videos
+    description: "Cleaned video records, deduped to latest row per video_id."
+    columns:
+      - name: video_id
+        description: "YouTube video id. Primary key after dedup."
+        tests:
+          - unique
+          - not_null
+      - name: channel_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_channels')
+              field: channel_id

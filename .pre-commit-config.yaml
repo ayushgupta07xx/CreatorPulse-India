@@ -33,4 +33,4 @@ repos:
         name: sqlfluff (lint)
         entry: sqlfluff lint
         language: system
-        files: ^warehouse/.*\.sql$
+        files: ^warehouse/dbt_project/.*\.sql$

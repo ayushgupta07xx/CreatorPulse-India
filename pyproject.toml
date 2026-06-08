@@ -44,7 +44,7 @@ ml = [
 ]
 viz = ["plotly>=5.22", "seaborn>=0.13", "matplotlib>=3.9"]
 app = ["streamlit>=1.32", "posthog>=3.5", "redis>=5.0"]
-warehouse = ["dbt-core>=1.7", "dbt-postgres>=1.7"]
+warehouse = ["dbt-core>=1.7,<2.0a0", "dbt-postgres>=1.7,<2.0a0"]
 dev = [
   "ruff==0.6.9",
   "mypy>=1.10",

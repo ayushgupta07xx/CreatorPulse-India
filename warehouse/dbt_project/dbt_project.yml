@@ -1,0 +1,38 @@
+name: 'creatorpulse'
+version: '1.0.0'
+config-version: 2
+
+profile: 'creatorpulse'
+
+require-dbt-version: [">=1.7.0", "<2.0.0"]
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Layer -> schema/materialization.
+# dbt NEVER writes into Alembic-owned schemas (raw, staging, marts.channel_embeddings).
+# staging_dbt / intermediate are dbt-owned view layers; marts is shared at the
+# OBJECT level only (Alembic owns marts.channel_embeddings; dbt owns dim_*/fact_*/mart_*).
+models:
+  creatorpulse:
+    staging:
+      +materialized: view
+      +schema: staging_dbt
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +schema: marts
+
+snapshots:
+  creatorpulse:
+    +target_schema: snapshots

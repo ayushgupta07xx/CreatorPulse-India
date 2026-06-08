@@ -1,0 +1,142 @@
+version: 2
+
+models:
+  - name: dim_channel
+    description: "Channel dimension — current SCD2 records (from snap_dim_channel) + recency attributes."
+    columns:
+      - name: channel_id
+        tests:
+          - unique
+          - not_null
+      - name: subscriber_count
+        tests:
+          - not_null
+      - name: niche
+        tests:
+          - not_null
+
+  - name: dim_niche
+    description: "Niche dimension with surrogate key and rollups."
+    columns:
+      - name: niche
+        tests:
+          - unique
+          - not_null
+          - accepted_values:
+              values:
+                - 'Tech'
+                - 'Gaming'
+                - 'Beauty'
+                - 'Food'
+                - 'Fitness'
+                - 'Comedy'
+                - 'Education'
+                - 'Lifestyle'
+                - 'Music'
+                - 'Devotional'
+                - 'News'
+                - 'Vlogs'
+                - 'Auto'
+                - 'DIY'
+                - 'Travel'
+                - 'Sports'
+                - 'Finance'
+                - 'Parenting'
+                - 'Fashion'
+                - 'Reactions'
+                - 'unclassified'
+              config:
+                severity: warn
+      - name: niche_key
+        tests:
+          - not_null
+
+  - name: dim_date
+    description: "Calendar date dimension, 2005-01-01 .. 2027-12-31."
+    columns:
+      - name: date_day
+        tests:
+          - unique
+          - not_null
+      - name: date_key
+        tests:
+          - unique
+          - not_null
+
+  - name: fact_channel_metrics_daily
+    description: "Daily channel metrics fact. Grain: (channel_id, metric_date)."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - channel_id
+            - metric_date
+    columns:
+      - name: metrics_key
+        tests:
+          - unique
+          - not_null
+      - name: channel_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_channel')
+              field: channel_id
+      - name: date_key
+        tests:
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+              config:
+                severity: warn
+
+  - name: fact_video
+    description: "Per-video fact with engagement metrics. Grain: video_id."
+    columns:
+      - name: video_id
+        tests:
+          - unique
+          - not_null
+      - name: channel_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_channel')
+              field: channel_id
+      - name: published_date_key
+        tests:
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+              config:
+                severity: warn
+
+  - name: mart_channel_growth_curves
+    description: "Per-channel cumulative growth series for plotting growth curves."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - channel_id
+            - metric_date
+    columns:
+      - name: channel_id
+        tests:
+          - not_null
+
+  - name: mart_niche_demand
+    description: "Niche-level demand signals for the brand side + Prophet inputs."
+    columns:
+      - name: niche
+        tests:
+          - unique
+          - not_null
+
+  - name: mart_creator_features
+    description: "ML-ready per-channel feature table feeding the fraud/clustering/earnings models."
+    columns:
+      - name: channel_id
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('dim_channel')
+              field: channel_id

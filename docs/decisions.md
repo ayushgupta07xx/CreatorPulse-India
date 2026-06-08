@@ -45,3 +45,28 @@
 **Status:** Accepted (Day 3)
 **Context:** `data/seed_channels.csv` is gitignored/host-only and `staging.channels` doesn't store the uploads playlist id.
 **Decision:** `apps.ingest.refresh` selects the channel set from `staging.channels` (subs-ranked into tiers), decoupling the recurring path from the CSV. The uploads playlist id is derived as `UU`+channel_id[2:] (YouTube convention) — no schema change to fetch videos. `static_ingest` stays the CSV-seeded one-shot bootstrap.
+
+## ADR-0010 — dbt warehouse schema layout & ownership materialization
+**Status:** Accepted (Day 4)
+**Context:** dbt builds the dimensional warehouse reading Alembic-owned `staging.*`
+as sources (ADR-0006 split). It must materialize without colliding with or
+dropping Alembic-owned tables (`raw.*`, `staging.*`, `marts.channel_embeddings`).
+
+**Decision:**
+- Override `generate_schema_name` to emit bare custom schema names (no
+  target-schema prefix).
+- staging → views in `staging_dbt`; intermediate → views in `intermediate`;
+  marts → tables in `marts`; snapshot → `snapshots`.
+- dbt NEVER writes `raw`/`staging`. `marts` is shared at the OBJECT level only:
+  Alembic owns `marts.channel_embeddings`; dbt owns `dim_*/fact_*/mart_*`. dbt
+  only creates/drops its own relations, so `channel_embeddings` is never touched.
+- `dim_channel` is fed from the `snap_dim_channel` SCD2 snapshot (current rows),
+  making the dimension genuinely SCD2-backed.
+
+**Consequences:**
+- Clean ownership boundary; no recreation collisions.
+- Postgres-specific SQL in several models (`filter`, `distinct on`,
+  `percentile_cont within group`, interval math, `to_char`) — must be
+  target-gated IF the optional Day-13 BigQuery cycle runs (JobAtlas lesson).
+- Actual model count is 21 on 3 source surfaces; the "40+" target was not
+  architecturally reachable without padding — canonical/bullets reconciled to "20+".

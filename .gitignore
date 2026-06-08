@@ -35,3 +35,4 @@ warehouse/dbt_project/logs/
 .DS_Store
 .vscode/
 data/quota_usage.json
+warehouse/dbt_project/.user.yml
