@@ -48,7 +48,9 @@ warehouse = ["dbt-core>=1.7,<2.0a0", "dbt-postgres>=1.7,<2.0a0"]
 dev = [
   "ruff==0.6.9",
   "mypy>=1.10",
-  "sqlfluff>=3.1",
+  "sqlfluff>=4.2,<4.3",
+  "sqlfluff-templater-dbt>=4.2,<4.3",
+  "dbt-core>=1.7,<2.0a0",
   "pytest>=8.2",
   "pre-commit>=3.7",
   "types-requests",
