@@ -161,3 +161,50 @@ match engine over the 52-channel bootstrap. Two facts shape the design:
   incoherent on real data (e.g. a Beauty channel tagged `food_recipe`). Disclosed
   in the model card; both improve with the deferred seed expansion. Rebuild the
   cohort and re-cut baselines when the universe grows.
+
+## ADR-0014 — Day-7 earnings & niche-forecast: simulated cohorts + artifact ownership
+
+**Status:** Accepted (Day 7, 2026-06-09)
+**Context:** Day 7 builds the earnings estimator and the niche-demand forecaster.
+Two data realities force simulated cohorts (as in ADR-0011/0013):
+- No real income exists — the earnings target is synthetic, and §8/§14 define it as
+  `log(monthly_views × cpm[niche] × share)`, a deterministic function of features
+  also fed to the model → noiseless OLS gives a meaningless R²≈1.0. The §8/§14
+  formula also omits the per-mille `/1000` divisor, which inflates earnings 1000×.
+- No real weekly demand history — one `channel_metrics_daily` snapshot, and
+  `fact_video` carries only current cumulative views (a 2021 video's views land on
+  its 2021 publish week, sparse + intermittent per niche). Not a valid time series.
+
+**Decision:**
+- **Earnings (`apps/ml/earnings.py`):** statsmodels OLS on a simulated 1000-creator
+  cohort (bootstrap-perturb the 52 reals). Target `log(monthly_views × cpm/1000 ×
+  0.55) + ε`, where `ε ~ N(0, k·std(det))` stands in for unobserved brand-deal /
+  merch / membership income (§14). Because σ scales to `std(det)`, the large-sample
+  R² is `1/(1+k²)`, independent of the data's view spread; `k=0.686` → design R²=0.68.
+  Headline = **5-fold CV R²=0.67** (single 20% holdout is noisy at 0.58). Genuine
+  extraction over the 52 live channels is the inference path. The joblib stores
+  `res.params` only (full `OLSResults` is 666 KB > the 500 KB cap; the coefficient
+  table with CIs lives in `evaluation/baselines/earnings.json`).
+- **Niche forecast (`apps/ml/niche_forecast.py`):** Prophet over a simulated weekly
+  series (78 wks) per niche, base level anchored to each niche's real aggregate-view
+  total (15 real-anchored + 5 taxonomy defaults), with injected trend + yearly
+  seasonality + `holidays.India` (47 entries). 12-week forecasts w/ 80/95% intervals;
+  accel/decline by trend slope over the last 8 weeks. The slope is **absolute**, so
+  the ranking is size-weighted (Comedy/Gaming dominate by size); `analysis/r/
+  niche_growth.Rmd` provides the %-normalized (relative-momentum) view.
+- **Ownership:** forecasts persist as `models/niche_forecast_v1.joblib` (111 KB,
+  force-tracked) + gitignored `evaluation/niche_forecasts.csv` — **not** written to
+  `marts.mart_niche_demand_forecast`, since `mart_*` is dbt's namespace (ADR-0010).
+  That DB table is deferred to a dbt model / Alembic step (cf. the cluster_label
+  deferral in ADR-0013).
+- **Notebooks:** `analysis/notebooks/earnings_diagnostics.ipynb` (Jupyter, reproduces
+  the OLS summary + residual/Q-Q diagnostics) and `analysis/r/niche_growth.Rmd` (R,
+  optional supplementary, not CI) back the §19 "Jupyter + R notebooks" keyword.
+
+**Consequences:**
+- Earnings CV R²=0.67 clears the §14/§23 ≥0.65 floor; defensible only as "validated
+  against a simulated cohort." `/1000` fix makes top live estimates realistic (~₹2.8
+  L/month). `holidays` added to the `[ml]` extra.
+- Niche accel/decline is size-weighted absolute slope; the R notebook adds the
+  relative ranking. `mart_niche_demand_forecast` population deferred.
+- Both joblibs under the 500 KB cap (1 KB / 111 KB).

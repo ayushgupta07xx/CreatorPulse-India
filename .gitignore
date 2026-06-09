@@ -40,3 +40,4 @@ warehouse/dbt_project/.user.yml
 mlflow.db
 mlruns/
 evaluation/cluster_assignments.csv
+evaluation/niche_forecasts.csv

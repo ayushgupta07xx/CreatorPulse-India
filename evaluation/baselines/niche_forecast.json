@@ -1,0 +1,38 @@
+{
+  "cohort": "simulated",
+  "n_niches": 20,
+  "real_anchored_niches": [
+    "Auto",
+    "Beauty",
+    "Comedy",
+    "Education",
+    "Finance",
+    "Fitness",
+    "Food",
+    "Gaming",
+    "Lifestyle",
+    "Music",
+    "News",
+    "Reactions",
+    "Tech",
+    "Travel",
+    "Vlogs"
+  ],
+  "n_weeks_history": 78,
+  "horizon_weeks": 12,
+  "holiday_calendar": "holidays.India",
+  "top5_accelerating": [
+    "Food",
+    "Reactions",
+    "DIY",
+    "Fashion",
+    "Vlogs"
+  ],
+  "top5_declining": [
+    "Comedy",
+    "Gaming",
+    "Fitness",
+    "Parenting",
+    "Sports"
+  ]
+}

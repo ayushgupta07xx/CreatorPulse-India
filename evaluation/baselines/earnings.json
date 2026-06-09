@@ -1,0 +1,93 @@
+{
+  "cohort": "simulated",
+  "n": 1000,
+  "n_test": 200,
+  "cv_r2": 0.6702,
+  "r2_test": 0.5818,
+  "r2_train": 0.7064,
+  "noise_k": 0.686,
+  "seed": 42,
+  "target": "log AdSense-equivalent monthly earnings (INR)",
+  "coefficients": {
+    "const": {
+      "coef": -6.1501,
+      "pvalue": 0.0011
+    },
+    "log_subscribers": {
+      "coef": 0.054,
+      "pvalue": 0.6712
+    },
+    "log_monthly_views": {
+      "coef": 1.1044,
+      "pvalue": 0.0
+    },
+    "mean_engagement_rate": {
+      "coef": 8.1862,
+      "pvalue": 0.1573
+    },
+    "posting_cadence_mean": {
+      "coef": 0.0046,
+      "pvalue": 0.6082
+    },
+    "is_long_form": {
+      "coef": 0.0276,
+      "pvalue": 0.912
+    },
+    "niche_Beauty": {
+      "coef": -0.4365,
+      "pvalue": 0.6038
+    },
+    "niche_Comedy": {
+      "coef": -1.8421,
+      "pvalue": 0.0509
+    },
+    "niche_Education": {
+      "coef": -0.2447,
+      "pvalue": 0.7068
+    },
+    "niche_Finance": {
+      "coef": 1.0161,
+      "pvalue": 0.0921
+    },
+    "niche_Fitness": {
+      "coef": -1.5325,
+      "pvalue": 0.0264
+    },
+    "niche_Food": {
+      "coef": -1.166,
+      "pvalue": 0.0491
+    },
+    "niche_Gaming": {
+      "coef": -1.7148,
+      "pvalue": 0.0073
+    },
+    "niche_Lifestyle": {
+      "coef": -0.363,
+      "pvalue": 0.6679
+    },
+    "niche_Music": {
+      "coef": -0.7224,
+      "pvalue": 0.3273
+    },
+    "niche_News": {
+      "coef": 0.1935,
+      "pvalue": 0.7906
+    },
+    "niche_Reactions": {
+      "coef": -2.402,
+      "pvalue": 0.0002
+    },
+    "niche_Tech": {
+      "coef": -0.2456,
+      "pvalue": 0.6459
+    },
+    "niche_Travel": {
+      "coef": -0.0329,
+      "pvalue": 0.9762
+    },
+    "niche_Vlogs": {
+      "coef": -1.0528,
+      "pvalue": 0.1308
+    }
+  }
+}

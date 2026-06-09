@@ -1,0 +1,84 @@
+---
+title: "CreatorPulse — Niche Demand Growth (R)"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(lubridate)
+library(scales)
+```
+
+## Data
+
+Reads the Prophet niche-demand forecast produced by `apps/ml/niche_forecast.py`
+(`evaluation/niche_forecasts.csv`). The series is a **simulated** weekly demand
+cohort anchored to real per-niche view levels — see `docs/decisions.md` ADR-0014.
+Knit from `analysis/r/` after running the forecaster (R is optional supplementary;
+not part of the CI stack).
+
+```{r load}
+fc <- read_csv("../../evaluation/niche_forecasts.csv") %>%
+  mutate(ds = as_date(ds))
+glimpse(fc)
+```
+
+## Forecast trend by niche
+
+```{r trends, fig.width = 11, fig.height = 8}
+ggplot(fc, aes(ds, yhat)) +
+  geom_ribbon(aes(ymin = lo95, ymax = hi95), alpha = 0.15) +
+  geom_line(color = "#2c7fb8") +
+  facet_wrap(~ niche, scales = "free_y") +
+  scale_y_continuous(labels = label_number(scale_cut = cut_short_scale())) +
+  labs(
+    title = "Niche demand — Prophet 12-week forecast (simulated, real-anchored)",
+    x = NULL, y = "weekly views (yhat)"
+  ) +
+  theme_minimal()
+```
+
+## Growth slope (size-normalized)
+
+`niche_forecast.py` ranks accel/decline by the **absolute** trend slope, which is
+dominated by niche size. Here we rank by **% change per week** (slope ÷ mean level)
+to isolate relative momentum.
+
+```{r slopes}
+slopes <- fc %>%
+  group_by(niche) %>%
+  arrange(ds) %>%
+  summarise(
+    slope_abs = coef(lm(yhat ~ as.numeric(ds)))[2],
+    mean_views = mean(yhat),
+    .groups = "drop"
+  ) %>%
+  mutate(pct_per_week = slope_abs * 7 / mean_views * 100) %>%
+  arrange(desc(pct_per_week))
+
+knitr::kable(slopes, digits = 3)
+```
+
+```{r ranking}
+cat("Top-5 accelerating (%/week):\n"); print(head(slopes$niche, 5))
+cat("\nTop-5 declining (%/week):\n");   print(tail(slopes$niche, 5))
+```
+
+```{r momentum-plot, fig.width = 9, fig.height = 5}
+ggplot(slopes, aes(reorder(niche, pct_per_week), pct_per_week,
+                   fill = pct_per_week > 0)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_manual(values = c("TRUE" = "#31a354", "FALSE" = "#de2d26"), guide = "none") +
+  labs(title = "Niche momentum (% weekly change in forecast trend)",
+       x = NULL, y = "% per week") +
+  theme_minimal()
+```
+
+The size-normalized ranking can differ from the absolute-slope list because a small
+niche with a strong relative trend moves little in raw views. Both views are
+legitimate; the Streamlit Market Overview surfaces the absolute list, this notebook
+the relative one.

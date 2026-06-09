@@ -41,6 +41,7 @@ ml = [
   "shap>=0.45",
   "bertopic>=0.16",
   "scipy>=1.13",
+  "holidays",
 ]
 viz = ["plotly>=5.22", "seaborn>=0.13", "matplotlib>=3.9"]
 app = ["streamlit>=1.32", "posthog>=3.5", "redis>=5.0"]
