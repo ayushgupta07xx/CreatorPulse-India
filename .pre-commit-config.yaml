@@ -1,5 +1,7 @@
 # Local/system hooks invoke the venv's tools so hook version == local fixer (ADR-0004).
-# Run with the venv active so `ruff`/`mypy`/`sqlfluff` resolve to .venv.
+# Run with the venv active so `ruff`/`sqlfluff` resolve to .venv.
+# mypy is the exception (ADR-0009): isolated in pre-commit's own env because modern
+# mypy needs pathspec>=1.0 while dbt caps pathspec<0.13 — they can't share the venv.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
@@ -10,7 +12,6 @@ repos:
         args: ["--maxkb=500"]
       - id: check-yaml
       - id: check-merge-conflict
-
   - repo: local
     hooks:
       - id: ruff-check
@@ -23,14 +24,15 @@ repos:
         entry: ruff format
         language: system
         types: [python]
-      - id: mypy
-        name: mypy
-        entry: mypy
-        language: system
-        types: [python]
-        files: ^(apps|scripts)/
       - id: sqlfluff
         name: sqlfluff (lint)
         entry: sqlfluff lint
         language: system
         files: ^warehouse/dbt_project/.*\.sql$
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.20.2
+    hooks:
+      - id: mypy
+        files: ^(apps|scripts)/
+        args: [--ignore-missing-imports]
+        additional_dependencies: [types-requests]

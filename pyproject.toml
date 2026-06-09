@@ -47,7 +47,6 @@ app = ["streamlit>=1.32", "posthog>=3.5", "redis>=5.0"]
 warehouse = ["dbt-core>=1.7,<2.0a0", "dbt-postgres>=1.7,<2.0a0"]
 dev = [
   "ruff==0.6.9",
-  "mypy>=1.10",
   "sqlfluff>=4.2,<4.3",
   "sqlfluff-templater-dbt>=4.2,<4.3",
   "dbt-core>=1.7,<2.0a0",

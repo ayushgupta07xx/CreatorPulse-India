@@ -93,3 +93,19 @@ Reproducibility: `fraud_frac=0.33`, `LABEL_DISAGREEMENT=0.12`, `FEATURE_NOISE=0.
 - AUC (0.77) trails F1 (0.83) by design: the label-disagreement injection penalises ranking-based AUC more than the thresholded decision. Documented; the §12 AUC target is relaxed to ≥0.75.
 - The number is honest but bounded: it reflects simulation difficulty, not detection of real fraud. When ≥2 daily metrics snapshots land and the seed cohort approaches its target size, the cohort can be rebuilt from real growth features and these baselines re-cut.
 - `models/fraud_classifier_v1.joblib` (348 KB) is committed under the 500 KB cap; `evaluation/baselines/fraud_classifier.json` is the CI model-eval-gate reference (gate wired a later day).
+
+## ADR-0012 — Isolate mypy from the project venv (pre-commit mirrors-mypy)
+
+**Status:** Accepted — Day 5 (2026-06-09)
+
+**Context**
+Modern mypy (≥1.20) requires `pathspec>=1.0`, but `dbt-core`/`dbt-common` cap `pathspec<0.13`. Both live in the project venv; the ranges are disjoint, so no single venv satisfies both. Running mypy via `language: system` forced a venv `pip install mypy` that upgraded pathspec to 1.x and broke dbt; pinning pathspec back to 0.12.1 breaks mypy's `pathspec.patterns.gitignore` import.
+
+**Decision**
+Move the mypy hook from `repo: local` to upstream `mirrors-mypy`, which runs mypy in pre-commit's own isolated environment with its own pathspec. The venv keeps `pathspec 0.12.1` for dbt and no longer installs mypy (removed from the `dev` extra). The isolated hook reads the repo `[tool.mypy]` config and uses `--ignore-missing-imports` + `additional_dependencies: [types-requests]` since it can't see the venv's packages. ruff/sqlfluff stay `language: system`.
+
+**Consequences**
+- dbt and mypy both work; a fresh `pip install -e ".[dev]"` no longer pulls a pathspec that breaks dbt.
+- mypy version is pinned by the hook `rev`, not the venv.
+- Manual `mypy` from the venv no longer works — use `pre-commit run mypy`.
+- Departs from ADR-0004's "hook == local fixer" for mypy only; justified by the unavoidable dependency conflict.
