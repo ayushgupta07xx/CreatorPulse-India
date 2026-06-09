@@ -25,7 +25,7 @@ make seed                     # resolve + validate seed channels via the API
 ## About / Built by
 
 CreatorPulse India is designed and built by **Ayush Gupta**.
-GitHub: https://github.com/ayushgupta07xx · LinkedIn: <add-linkedin-url>
+GitHub: https://github.com/ayushgupta07xx · LinkedIn: https://www.linkedin.com/in/ayush-gupta-544a803a2
 
 ## License
 
