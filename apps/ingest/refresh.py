@@ -140,6 +140,74 @@ def cmd_discovery(args: argparse.Namespace) -> None:
         quota_tracker.record(client.units_used, source="discovery")
 
 
+_SELECT_UNBACKFILLED_SQL = """
+    SELECT c.channel_id
+    FROM staging.channels c
+    LEFT JOIN (SELECT DISTINCT channel_id FROM staging.videos) v
+      ON v.channel_id = c.channel_id
+    WHERE v.channel_id IS NULL
+      AND COALESCE(c.video_count, 1) > 0
+    ORDER BY c.subscriber_count DESC NULLS LAST
+    LIMIT %(limit)s
+"""
+
+
+def _select_unbackfilled_ids(conn: Any, limit: int) -> list[str]:
+    with conn.cursor() as cur:
+        cur.execute(_SELECT_UNBACKFILLED_SQL, {"limit": limit})
+        return [r[0] for r in cur.fetchall()]
+
+
+def _chunks(seq: list[str], size: int):
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
+
+
+def cmd_backfill_videos(args: argparse.Namespace) -> None:
+    """Resumable, quota-capped video backfill over channels lacking videos.
+
+    Selects channels with no rows in staging.videos (skipping zero-upload
+    channels), processes them biggest-first in batches, and stops gracefully
+    once the day's remaining quota drops below --reserve. Re-running on a later
+    quota-day resumes where it left off (the selection excludes done channels).
+    """
+    load_dotenv()
+    client = _client()
+    conn = _connect()
+    processed = 0
+    try:
+        ids = _select_unbackfilled_ids(conn, args.limit)
+        logger.info("backfill: %d channels missing videos", len(ids))
+        if not ids:
+            logger.info("backfill complete: every channel has videos")
+            return
+        base_remaining = quota_tracker.usage()["units_remaining"]
+        logger.info("quota remaining today: %d (reserve %d)", base_remaining, args.reserve)
+        for batch in _chunks(ids, args.batch):
+            live_remaining = base_remaining - client.units_used
+            if live_remaining < args.reserve:
+                logger.info(
+                    "near quota cap (~%d left); stopping at %d channels (resume next run)",
+                    live_remaining,
+                    processed,
+                )
+                break
+            records = client.fetch_channel_videos(batch, max_per_channel=args.max_videos)
+            raw_rows, staging_rows = normalizer.to_video_rows(records)
+            with conn, conn.cursor() as cur:
+                normalizer.load_videos(cur, raw_rows, staging_rows)
+            processed += len(batch)
+            logger.info(
+                "backfilled %d/%d channels (%d videos this batch)",
+                processed,
+                len(ids),
+                len(records),
+            )
+    finally:
+        conn.close()
+        quota_tracker.record(client.units_used, source="backfill_videos")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="refresh")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -159,6 +227,13 @@ def build_parser() -> argparse.ArgumentParser:
     pd.add_argument("--max-new", type=int, default=50)
     pd.add_argument("--per-query", type=int, default=10)
     pd.set_defaults(func=cmd_discovery)
+
+    pb = sub.add_parser("backfill-videos", help="resumable, quota-capped video backfill")
+    pb.add_argument("--max-videos", type=int, default=10)
+    pb.add_argument("--batch", type=int, default=50, help="channels per fetch+commit batch")
+    pb.add_argument("--reserve", type=int, default=500, help="stop when remaining quota < this")
+    pb.add_argument("--limit", type=int, default=20000, help="max channels to attempt this run")
+    pb.set_defaults(func=cmd_backfill_videos)
     return p
 
 

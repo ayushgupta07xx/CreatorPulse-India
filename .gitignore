@@ -41,3 +41,11 @@ mlflow.db
 mlruns/
 evaluation/cluster_assignments.csv
 evaluation/niche_forecasts.csv
+
+# Seed-expansion: raw dataset + local seed backup (regenerable via seed_from_dataset.py)
+data/raw_seed/
+data/seed_channels.bootstrap.csv
+# Patch / build scratch
+seedexp/
+discoscale/
+seed_builder/
