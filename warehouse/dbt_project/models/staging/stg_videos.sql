@@ -26,4 +26,8 @@ select
     thumbnail_url,
     updated_at
 from deduped
-where rn = 1
+where
+    rn = 1
+    and channel_id in (
+        select sc.channel_id from {{ ref('stg_channels') }} as sc
+    )

@@ -113,7 +113,25 @@ def load_real(eng) -> pd.DataFrame:
 
 def embed(docs: list[str]) -> np.ndarray:
     model = SentenceTransformer(MODEL_NAME)
-    return np.asarray(model.encode(docs, normalize_embeddings=True, show_progress_bar=False))
+    return np.asarray(model.encode(docs, normalize_embeddings=True, show_progress_bar=True))
+
+
+def read_cached_embeddings(eng, channel_ids):
+    """Reuse embeddings already in marts.channel_embeddings (same model) so a
+    re-cluster skips the ~30-min CPU encode. Returns vectors in channel_ids
+    order, or None if coverage is incomplete (caller then re-encodes)."""
+    q = (
+        "select channel_id, embedding::text as emb "
+        "from marts.channel_embeddings "
+        f"where model_name = '{MODEL_NAME}'"
+    )
+    rows = pd.read_sql(q, eng)
+    if rows.empty:
+        return None
+    cache = dict(zip(rows["channel_id"], rows["emb"], strict=False))
+    if any(cid not in cache for cid in channel_ids):
+        return None
+    return np.asarray([json.loads(cache[cid]) for cid in channel_ids], dtype=np.float32)
 
 
 def write_embeddings(eng, channel_ids, embeddings) -> None:
@@ -147,10 +165,23 @@ def build_features(content_emb: np.ndarray, df: pd.DataFrame):
 
 
 def label_clusters(df: pd.DataFrame, labels: np.ndarray) -> dict:
-    out = {}
+    # Clusters here are largely behavioral, so label each by its most
+    # OVER-represented niche vs the global baseline (lift) rather than raw
+    # plurality -- otherwise the imbalanced Vlogs catch-all (lift ~1
+    # everywhere) wins every cluster. Min-support guard avoids tiny flukes.
+    base = df["niche"].value_counts(normalize=True)
+    out: dict[int, str] = {}
     for cl in sorted(set(labels)):
-        niches = df.loc[labels == cl, "niche"].dropna()
-        dom = niches.mode().iloc[0] if len(niches) else "Lifestyle"
+        members = df.loc[labels == cl, "niche"].dropna()
+        if len(members) == 0:
+            out[int(cl)] = "lifestyle_vlog"
+            continue
+        support = members.value_counts()
+        local = members.value_counts(normalize=True)
+        lift = local / base.reindex(local.index)
+        mask = support.reindex(lift.index).fillna(0) >= 3
+        lift = lift.where(mask, other=0.0)
+        dom = lift.idxmax() if float(lift.max()) > 0 else members.mode().iloc[0]
         out[int(cl)] = NICHE_TO_ARCHETYPE.get(dom, f"{str(dom).lower()}_creators")
     return out
 
@@ -178,9 +209,17 @@ def main() -> None:
     df = load_real(eng).reset_index(drop=True)
     print(f"loaded {len(df)} channels")
 
-    content_emb = embed(df["doc"].tolist())
-    write_embeddings(eng, df["channel_id"].tolist(), content_emb)
-    print(f"wrote {len(df)} embeddings to marts.channel_embeddings")
+    force = os.environ.get("REEMBED") == "1"
+    content_emb = None if force else read_cached_embeddings(eng, df["channel_id"].tolist())
+    if content_emb is not None:
+        print(
+            f"reused {len(content_emb)} cached embeddings"
+            " (set REEMBED=1 to force a fresh encode)"
+        )
+    else:
+        content_emb = embed(df["doc"].tolist())
+        write_embeddings(eng, df["channel_id"].tolist(), content_emb)
+        print(f"wrote {len(df)} embeddings to marts.channel_embeddings")
 
     composite, pca, scaler = build_features(content_emb, df)
 

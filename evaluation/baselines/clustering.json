@@ -1,29 +1,29 @@
 {
   "live": {
     "cohort": "live_bootstrap_52",
-    "n_channels": 52,
+    "n_channels": 12547,
     "k": 8,
-    "silhouette_composite": 0.2448,
-    "silhouette_content_only": -0.0703,
+    "silhouette_composite": 0.2035,
+    "silhouette_content_only": -0.0266,
     "dbscan_clusters": 1,
-    "dbscan_noise": 1,
+    "dbscan_noise": 6,
     "cluster_sizes": [
-      7,
-      3,
+      5003,
+      786,
+      3937,
+      2479,
+      90,
       10,
-      14,
-      14,
-      1,
-      1,
-      2
+      2,
+      240
     ],
     "archetypes_covered": [
-      "beauty_short_form",
+      "auto_creators",
       "comedy_sketch",
-      "food_recipe",
+      "educational_explainer",
       "gaming_streams",
-      "music_creators",
-      "tech_long_form"
+      "lifestyle_vlog",
+      "music_creators"
     ]
   },
   "simulated": {
