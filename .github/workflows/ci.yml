@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+      - run: pip install -e ".[dev]"
+      # ruff (system hooks) + mypy (mirrors-mypy isolated env) via pre-commit.
+      # sqlfluff is skipped here: it needs the dbt templater + DB (see the dbt job).
+      - run: SKIP=sqlfluff pre-commit run --all-files --show-diff-on-failure
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      # dev + the two libs the eval gate needs; avoids pulling torch via the full [ml] extra.
+      - run: pip install -e ".[dev]" "xgboost>=2.0" "scikit-learn>=1.5"
+      - name: unit tests
+        run: pytest tests/unit -q
+      - name: model-eval gate (fraud holdout F1 regression < 5%)
+        run: python evaluation/check_regression.py
+
+  dbt:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: creatorpulse
+          POSTGRES_PASSWORD: creatorpulse
+          POSTGRES_DB: creatorpulse
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U creatorpulse"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/warehouse/dbt_project
+      DBT_PG_HOST: localhost
+      DBT_PG_PORT: "5432"
+      DBT_PG_USER: creatorpulse
+      DBT_PG_PASSWORD: creatorpulse
+      DBT_PG_DBNAME: creatorpulse
+      DBT_PG_SCHEMA: analytics
+      DBT_PG_SSLMODE: disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e ".[dev,warehouse]"
+      # Validate + lint against an empty ephemeral PG (no real YouTube data in CI).
+      # If `dbt compile` trips on an introspective macro, drop it to `dbt parse` only.
+      - name: dbt validate + sqlfluff
+        working-directory: warehouse/dbt_project
+        run: |
+          dbt deps
+          dbt parse
+          dbt compile
+          sqlfluff lint models
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0" # report-only; set to "1" to block on findings
