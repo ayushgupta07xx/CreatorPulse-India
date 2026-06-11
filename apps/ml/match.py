@@ -9,10 +9,10 @@ Two-stage ranking (see 05_CreatorPulse.md §13):
 
 Cluster affinity comes from models/cluster_assignments_v1.joblib (Day 6),
 fraud risk from models/fraud_classifier_v1.joblib (Day 5). The fraud model
-was trained on a simulated cohort, so scores on the 52 live channels are
+was trained on a simulated cohort, so scores on the 12,547 live channels are
 approximate (growth/country features are degenerate on real data). budget_fit
-is a CPM-based affordability proxy until the Day-7 OLS earnings estimator
-replaces it.
+uses a reach-based sponsored-CPM cost proxy (attach_est_earnings); the Day-7 OLS
+AdSense regressor is kept as a methodology artifact, not the live brand number.
 
 Demo: set -a; source .env; set +a; python -m apps.ml.match
 """
@@ -29,8 +29,8 @@ import pandas as pd
 from sentence_transformers import SentenceTransformer
 from sqlalchemy import create_engine, text
 
-import apps.ml.earnings as earnings
 import apps.ml.features as features
+from apps.ml.pricing import CPM, CPM_DEFAULT, SPONSORED_CPM_FACTOR
 
 REPO = Path(__file__).resolve().parents[2]
 MODELS_DIR = REPO / "models"
@@ -40,21 +40,6 @@ W_COSINE = 0.55
 W_NICHE = 0.20
 W_FRAUD = 0.15
 W_BUDGET = 0.10
-
-# Niche sponsorship CPM (INR per 1000 views), 05_CreatorPulse.md §14.
-CPM = {
-    "Finance": 80,
-    "Tech": 40,
-    "Education": 35,
-    "News": 35,
-    "Beauty": 25,
-    "Fashion": 25,
-    "Gaming": 20,
-    "Comedy": 15,
-    "Entertainment": 15,
-    "Reactions": 15,
-}
-CPM_DEFAULT = 25
 
 
 def get_engine():
@@ -114,27 +99,20 @@ def attach_fraud_risk(eng, df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def attach_est_earnings(eng, df: pd.DataFrame) -> pd.DataFrame:
-    """OLS earnings estimate (Day-7 regressor) as the campaign-cost proxy.
+def attach_est_earnings(df: pd.DataFrame) -> pd.DataFrame:
+    """Estimated sponsored-video cost as the campaign-cost proxy.
 
-    Reuses earnings.load_real + build_design so the design matrix matches
-    the trained coefficients exactly; falls back to the CPM proxy on error.
+    A brand budgets for what an integration costs, which scales with a creator's
+    typical reach (mean_views), not the creator's AdSense income. Per-channel
+    monthly AdSense is not recoverable from a single metrics snapshot plus a thin
+    recent-video sample (it misses the evergreen back-catalog), so this uses a
+    reach-based sponsored-CPM proxy. The OLS AdSense regressor stays a methodology
+    artifact (docs/model_card.md, evaluation/baselines/earnings.json), not the
+    live brand number.
     """
-    ebundle = joblib.load(MODELS_DIR / "earnings_regressor_v1.joblib")
-    try:
-        real = earnings.load_real(eng)
-        derived = real[["channel_id", "monthly_views", "posting_cadence_mean", "is_long_form"]]
-        merged = df.merge(derived, on="channel_id", how="left")
-        merged["monthly_views"] = merged["monthly_views"].fillna(merged["mean_views"])
-        cad_med = merged["posting_cadence_mean"].median()
-        merged["posting_cadence_mean"] = merged["posting_cadence_mean"].fillna(cad_med)
-        merged["is_long_form"] = merged["is_long_form"].fillna(0.0)
-        x, _ = earnings.build_design(merged, ebundle["niches"])
-        log_pred = x @ np.asarray(ebundle["params"], dtype=float)
-        df["est_cost_inr"] = np.expm1(log_pred).clip(min=1.0)
-    except Exception as exc:  # noqa: BLE001
-        print(f"earnings estimate fell back to CPM proxy: {exc}")
-        df["est_cost_inr"] = df.apply(lambda r: _est_cost(r["niche"], r["mean_views"]), axis=1)
+    views = pd.to_numeric(df["mean_views"], errors="coerce").fillna(0.0)
+    cpm = df["niche"].map(CPM).fillna(CPM_DEFAULT).astype(float)
+    df["est_cost_inr"] = (views * cpm * SPONSORED_CPM_FACTOR / 1000.0).clip(lower=1.0)
     return df
 
 
@@ -148,12 +126,14 @@ def match(
     budget_lakh: float = 15.0,
     top_k: int = 20,
     candidate_k: int = 200,
+    rerank: bool = True,
+    niche_filter: str | None = None,
 ) -> pd.DataFrame:
     eng = get_engine()
     bundle = joblib.load(MODELS_DIR / "cluster_assignments_v1.joblib")
     creators, centroids = load_creators(eng, bundle)
     creators = attach_fraud_risk(eng, creators)
-    creators = attach_est_earnings(eng, creators)
+    creators = attach_est_earnings(creators)
 
     encoder = SentenceTransformer(MODEL_NAME)
     qvec = encoder.encode([brief], normalize_embeddings=True)[0]
@@ -173,6 +153,8 @@ def match(
         ).fetchall()
     cand = pd.DataFrame(rows, columns=["channel_id", "cosine"])
     cand = cand.merge(creators, on="channel_id", how="inner")
+    if niche_filter:
+        cand = cand[cand["niche"] == niche_filter]
 
     # Stage 2 - composite re-rank.
     qv = np.asarray(qvec, dtype=float)
@@ -187,7 +169,12 @@ def match(
         + W_FRAUD * (1.0 - cand["fraud_risk"])
         + W_BUDGET * cand["budget_fit"]
     )
-    out = cand.sort_values("final_score", ascending=False).head(top_k)
+    if not rerank:
+        # Variant A (A/B match_rerank_v2): pure Stage-1 cosine. Surface cosine as
+        # the match score so the UI reflects the basis the ranking actually used.
+        cand["final_score"] = cand["cosine"]
+    rank_col = "final_score" if rerank else "cosine"
+    out = cand.sort_values(rank_col, ascending=False).head(top_k)
     return out[
         [
             "channel_id",

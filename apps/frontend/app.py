@@ -20,7 +20,7 @@ with left:
 with right:
     st.markdown("#### 🏷️ Brand")
     st.write("Find vetted creators for a campaign brief, with fraud screening.")
-    st.caption("Brand view ships next.")
+    st.page_link("pages/brand.py", label="Open the brand view →")
 
 st.divider()
 

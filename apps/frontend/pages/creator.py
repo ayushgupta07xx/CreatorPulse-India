@@ -11,14 +11,36 @@ import plotly.graph_objects as go
 import streamlit as st
 
 _FRONTEND = Path(__file__).resolve().parents[1]
-if str(_FRONTEND) not in sys.path:
-    sys.path.insert(0, str(_FRONTEND))
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+for _p in (str(_REPO_ROOT), str(_FRONTEND)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-from components import data  # noqa: E402
+from components import analytics, data  # noqa: E402
 from components.about import render_about_sidebar  # noqa: E402
 
+from apps.ml.pricing import sponsored_cost  # noqa: E402
+
 st.set_page_config(page_title="CreatorPulse — Creator", page_icon="📈", layout="wide")
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _fetch_avatar(url: str) -> bytes | None:
+    """Proxy the channel avatar server-side; yt3 hotlinks fail in the browser but a
+    server GET usually succeeds. Returns None on failure (caller shows a letter)."""
+    try:
+        import requests
+
+        r = requests.get(url, timeout=4)
+        if r.ok and r.headers.get("content-type", "").startswith("image"):
+            return r.content
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
 st.title("📈 Creator Intelligence")
+analytics.capture_once("persona_creator", "persona_selected", {"persona": "creator"})
 
 creators = data.load_creators_df()
 if creators.empty:
@@ -40,24 +62,43 @@ row = creators[creators["title"] == choice].iloc[0]
 peers_all = creators[creators["cluster_id"] == row["cluster_id"]]
 nb = data.load_niche_forecast()
 fc = nb["forecasts"].get(row["niche"])
+_cid = row["channel_id"]
+if st.session_state.get("_ph_last_creator") != _cid:
+    st.session_state["_ph_last_creator"] = _cid
+    analytics.capture("creator_searched", {"query": choice, "results_count": 1})
+    analytics.capture("creator_profile_viewed", {"channel_id": _cid, "niche": row["niche"]})
+    analytics.capture("niche_demand_chart_viewed", {"niche": row["niche"]})
+    analytics.capture("peer_benchmark_opened", {"channel_id": _cid})
 
 # ---- header ----
 h1, h2 = st.columns([1, 4])
 with h1:
     thumb = row.get("thumbnail_url")
-    if isinstance(thumb, str) and thumb:
-        st.image(thumb, width=120)
+    avatar = _fetch_avatar(thumb) if isinstance(thumb, str) and thumb else None
+    if avatar:
+        st.image(avatar, width=120)
     else:
         st.markdown(f"## {choice[:1].upper()}")
 with h2:
     st.subheader(choice)
     st.markdown(f"Niche **{row['niche']}** · Archetype `{row['archetype']}`")
-    a, b, c = st.columns(3)
+    a, b, c, d = st.columns(4)
     a.metric("Subscribers", f"{int(row['subscriber_count']):,}")
     b.metric("Total views", f"{int(row['view_count']):,}")
     c.metric("Videos", f"{int(row['video_count']):,}")
+    mv = row.get("mean_views")
+    d.metric("Avg views/video", f"{int(mv):,}" if pd.notna(mv) else "—")
 
 st.divider()
+
+# ---- estimated value ----
+_rate = sponsored_cost(row.get("mean_views"), row["niche"])
+st.markdown("### Estimated value")
+st.metric("Est. sponsored-video rate", f"₹{int(_rate):,}")
+st.caption(
+    "Reach-based proxy (typical views × sponsored CPM) — what a brand could pay "
+    "for one integration, not your AdSense income. Scales with average views."
+)
 
 # ---- growth ----
 st.markdown("### Growth")

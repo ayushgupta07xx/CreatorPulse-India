@@ -16,7 +16,7 @@ for _p in (str(REPO_ROOT), str(FRONTEND_DIR)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from components import data  # noqa: E402
+from components import analytics, data  # noqa: E402
 from components.about import render_about_sidebar  # noqa: E402
 
 st.set_page_config(page_title="CreatorPulse — Brands", page_icon="📊", layout="wide")
@@ -48,12 +48,16 @@ def top_fraud_signals(k: int = 3) -> list[str]:
 
 
 @st.cache_data(show_spinner="Matching creators to the brief…")
-def run_match(brief: str, budget_lakh: float, top_k: int) -> pd.DataFrame:
+def run_match(
+    brief: str, budget_lakh: float, top_k: int, rerank: bool = True, niche_filter: str | None = None
+) -> pd.DataFrame:
     # Lazy import: apps.ml.match pulls sentence-transformers/torch, so keeping
     # it inside the handler means torch only loads on the first real search.
     from apps.ml import match as match_engine
 
-    return match_engine.match(brief, budget_lakh=budget_lakh, top_k=top_k)
+    return match_engine.match(
+        brief, budget_lakh=budget_lakh, top_k=top_k, rerank=rerank, niche_filter=niche_filter
+    )
 
 
 @st.cache_resource(show_spinner=False)
@@ -168,6 +172,7 @@ ensure_shortlist_table()
 if "brand_session_id" not in st.session_state:
     st.session_state["brand_session_id"] = uuid.uuid4().hex
 session_id = st.session_state["brand_session_id"]
+analytics.capture_once("persona_brand", "persona_selected", {"persona": "brand"})
 
 st.title("📊 Find creators for your campaign")
 st.markdown(
@@ -175,15 +180,14 @@ st.markdown(
     "semantic fit, niche overlap, authenticity, and budget fit — with "
     "engagement-fraud screening applied before you shortlist."
 )
-st.warning(
-    "Bootstrap dataset: 52 indexed creators. Matches can surface off-niche, "
-    "and fraud/earnings figures are model estimates (validated against a "
-    "simulated cohort), not platform-verified.",
-    icon="⚠️",
-)
-
 creators_df = data.load_creators_df()
 niche_opts = ["Any", *sorted(creators_df["niche"].dropna().unique().tolist())]
+st.warning(
+    f"Indexed dataset: {len(creators_df):,} Indian YouTube creators. Matches can "
+    "surface off-niche, and fraud/earnings figures are model estimates (validated "
+    "against a simulated cohort), not platform-verified.",
+    icon="⚠️",
+)
 
 with st.container(border=True):
     brief = st.text_area("Campaign brief", value=SAMPLE_BRIEF, height=100)
@@ -196,11 +200,28 @@ with st.container(border=True):
 
 if search and brief.strip():
     query = brief.strip()
-    if niche != "Any":
-        query = f"{query}. Niche focus: {niche}."
-    matched = run_match(query, float(budget_lakh), 20)
+    niche_filter = None if niche == "Any" else niche
+    variant = analytics.match_variant()
+    analytics.capture(
+        "brief_composed",
+        {"brief_length": len(query), "niche": niche, "budget_lakh": float(budget_lakh)},
+    )
+    matched = run_match(
+        query, float(budget_lakh), 20, rerank=(variant == "test"), niche_filter=niche_filter
+    )
+    top_score = float(matched["final_score"].iloc[0]) if not matched.empty else 0.0
+    analytics.capture(
+        "match_requested",
+        {
+            "brief_id": session_id,
+            "top_match_score": top_score,
+            "num_results": int(len(matched)),
+            "$feature/match_rerank_v2": variant,
+        },
+    )
     st.session_state["brand_results"] = matched.to_dict("records")
     st.session_state["brand_brief"] = query
+    st.session_state["brand_variant"] = variant
 
 results = st.session_state.get("brand_results")
 brief_used = st.session_state.get("brand_brief", "")
@@ -213,7 +234,7 @@ if results:
     current_short = shortlist_ids(session_id)
 
     st.subheader(f"Top {len(res)} creators")
-    for _, row in res.iterrows():
+    for pos, (_, row) in enumerate(res.iterrows()):
         with st.container(border=True):
             left, mid, right = st.columns([2, 1.4, 1.2])
             with left:
@@ -228,8 +249,9 @@ if results:
                 )
                 est = int(row["est_cost_inr"]) if pd.notna(row["est_cost_inr"]) else 0
                 st.caption(
-                    f"Est. creator earnings ≈ ₹{est:,}/mo (OLS model estimate, "
-                    "AdSense-equivalent — used as a cost proxy)"
+                    f"Est. sponsored-video cost ≈ ₹{est:,} — reach-based proxy "
+                    "(typical views × sponsored CPM): what a brand integration costs, "
+                    "not the creator's AdSense income."
                 )
                 if signals:
                     st.caption("Top fraud signals weighed: " + ", ".join(signals))
@@ -239,6 +261,26 @@ if results:
                     width="stretch",
                     key=f"radar_{row['channel_id']}",
                 )
+                if st.button("🔍 Why this match?", key=f"why_{row['channel_id']}"):
+                    wkey = f"_why_{row['channel_id']}"
+                    st.session_state[wkey] = not st.session_state.get(wkey, False)
+                    analytics.capture(
+                        "match_explained",
+                        {"channel_id": row["channel_id"], "match_score": float(row["final_score"])},
+                    )
+                    analytics.capture(
+                        "fraud_report_viewed",
+                        {"channel_id": row["channel_id"], "fraud_score": float(row["fraud_risk"])},
+                    )
+                if st.session_state.get(f"_why_{row['channel_id']}"):
+                    st.markdown(
+                        "**Score components**\n\n"
+                        f"- Semantic match: {float(row['cosine']):.2f}\n"
+                        f"- Niche overlap: {float(row['niche_overlap']):.2f}\n"
+                        f"- Authenticity (1 - fraud): {1 - float(row['fraud_risk']):.2f}\n"
+                        f"- Budget fit: {float(row['budget_fit']):.2f}\n"
+                        f"- Composite score: {float(row['final_score']):.2f}"
+                    )
             with right:
                 if row["channel_id"] in current_short:
                     st.success("In shortlist")
@@ -249,12 +291,28 @@ if results:
                         disabled=True,
                     )
                 elif st.button("➕ Add to shortlist", key=f"add_{row['channel_id']}"):
+                    analytics.capture(
+                        "creator_shortlisted",
+                        {
+                            "channel_id": row["channel_id"],
+                            "position_in_results": int(pos),
+                            "$feature/match_rerank_v2": st.session_state.get(
+                                "brand_variant", "control"
+                            ),
+                        },
+                    )
                     add_to_shortlist(session_id, row["channel_id"], brief_used)
                     st.rerun()
 
 st.divider()
 st.subheader("📋 Shortlist")
 short = shortlist_ids(session_id)
+if len(short) >= 2:
+    analytics.capture_once(
+        f"compared_{len(short)}",
+        "comparison_viewed",
+        {"shortlist_size": len(short)},
+    )
 if not short:
     st.caption("No creators shortlisted yet. Add up to 5 from the results above.")
 else:
@@ -270,12 +328,20 @@ else:
             "Niche": sdf["niche"],
             "Archetype": sdf["archetype"],
             "Subscribers": sdf["subscriber_count"],
-            "Est. ₹/mo": sdf.get("est_cost_inr"),
+            "Est. ₹/video": sdf.get("est_cost_inr"),
             "Fraud risk": sdf.get("fraud_risk"),
             "Match": sdf.get("match_score"),
         }
     )
     st.dataframe(comp, width="stretch", hide_index=True)
+    if st.download_button(
+        "⬇️ Export shortlist (CSV)",
+        comp.to_csv(index=False).encode("utf-8"),
+        file_name="creatorpulse_shortlist.csv",
+        mime="text/csv",
+        key="export_shortlist",
+    ):
+        analytics.capture("dashboard_exported", {"format": "csv", "rows": int(len(comp))})
     st.plotly_chart(overlap_sankey(sdf), width="stretch")
     st.caption(
         "Composition view (creator → niche → archetype). True audience overlap "

@@ -70,8 +70,15 @@ def load_real(eng) -> pd.DataFrame:
         eng,
     )
     per_video = f["mean_views_last_90d"].fillna(f["mean_views"]).astype(float)
-    months = f["videos_last_90d"].astype(float).clip(lower=0) / 3.0
-    f["monthly_views"] = (per_video * months).clip(lower=1.0)
+    # Our ingestion captures only a bounded recent-video sample per channel, so
+    # videos_last_90d under-counts true output for high-frequency creators (a daily
+    # streamer shows 10). Estimate monthly uploads from posting cadence, falling
+    # back to the sampled count only when cadence is unknown.
+    cadence = f["mean_inter_video_days"].astype(float)
+    monthly_uploads = (30.44 / cadence).where(cadence > 0)
+    monthly_uploads = monthly_uploads.fillna(f["videos_last_90d"].astype(float).clip(lower=0) / 3.0)
+    monthly_uploads = monthly_uploads.clip(upper=60.0)
+    f["monthly_views"] = (per_video * monthly_uploads).clip(lower=1.0)
     f["posting_cadence_mean"] = f["mean_inter_video_days"].astype(float)
     f["is_long_form"] = (f["mean_duration_seconds"].astype(float) > LONG_FORM_SECONDS).astype(float)
     # Zero-upload/thin channels have no view data -> NaN monthly_views, which
