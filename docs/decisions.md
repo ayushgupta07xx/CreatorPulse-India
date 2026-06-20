@@ -318,3 +318,27 @@ meant to stop). Effect: a dead 5M-sub/20K-view channel prices at its ₹75K floo
 (SPONSORED_CPM_BAND). The pricing functions now take niche, subscriber_count and
 mean_duration_seconds; match.py and the API pass them. The AdSense CPM table and OLS regressor
 are unchanged. Supersedes ADR-0020. Documented in 05_CreatorPulse.md §14.
+
+## ADR-0023: Rebalance Stage-2 match composite — demote the near-constant niche_overlap term
+
+**Status:** Accepted. Supersedes the Stage-2 weights from ADR-0013.
+
+**Context.** `niche_overlap` (weight 0.20), computed as `dot(brief_vec, cluster_centroid)`, returns ~0.65 for essentially every result regardless of brief, because the content-cluster centroids are weakly separated (composite silhouette 0.203; content-only −0.03, per ADR-0013). A near-constant term at 0.20 adds a flat ~0.13 offset to every score — it inflates and compresses the visible match score without changing rank order. Short briefs (e.g. "vegan") then surface near-identical scores (76 / 75 / 74) and read as random, even though the underlying cosine ranking is sound (a specific gaming brief cleanly surfaces gaming channels).
+
+**Decision.** Rebalance the Stage-2 weights, sum held at 1.0:
+
+| term | old | new |
+|---|---|---|
+| cosine | 0.45 | 0.55 |
+| niche_overlap | 0.20 | 0.05 |
+| fraud (1 − risk) | 0.15 | 0.20 |
+| budget_fit | 0.10 | 0.10 |
+| reach_fit | 0.10 | 0.10 |
+
+Freed weight moves onto the signals that genuinely vary across creators (semantic cosine and per-creator fraud risk). `niche_overlap` is retained at a symbolic 0.05 rather than removed, so the two-stage composite structure and the audience-niche-affinity signal survive; it regains weight if cluster separation improves on a better-differentiated corpus.
+
+**Consequences.**
+- Visible match scores drop ~10 points in absolute terms (the flat niche offset is gone) but separate more by cosine + fraud — the ordering is more meaningful.
+- Variant A (pure cosine, `rerank=false`) is unchanged. The `match_rerank_v2` A/B sim (`analysis/ab_match_rerank.py`) injects its own effect size and does not read these weights, so the simulated 23% / 96% figure and the PA bullet are unaffected.
+- §13 formula in `05_CreatorPulse.md` updated to the new weights.
+- ADR-0017 (niche as a *hard Stage-1 filter*) is a separate mechanism — unchanged.

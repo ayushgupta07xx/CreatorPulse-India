@@ -40,9 +40,12 @@ REPO = Path(__file__).resolve().parents[2]
 MODELS_DIR = REPO / "models"
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
-W_COSINE = 0.45
-W_NICHE = 0.20
-W_FRAUD = 0.15
+# Stage-2 composite weights (sum 1.0). niche_overlap demoted to a near-symbolic
+# weight: content-cluster centroids are weakly separated (silhouette -0.03), so the
+# term is ~constant across briefs; cosine + fraud carry the discrimination (ADR-0023).
+W_COSINE = 0.55
+W_NICHE = 0.05
+W_FRAUD = 0.20
 W_BUDGET = 0.10
 W_REACH = 0.10
 MIN_VIEWS_DEFAULT = 5000.0
