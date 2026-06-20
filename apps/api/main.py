@@ -176,8 +176,12 @@ def get_creator(channel_id: str) -> dict:
         raise HTTPException(status_code=404, detail="creator not indexed")
     r = _records(row)[0]
     reach = r.get("median_views") or r.get("mean_views") or 0
-    subs = r.get("subscriber_count") or 0
-    r["est_sponsored_cost_inr"] = integration_cost_point(reach, subs)
+    r["est_sponsored_cost_inr"] = integration_cost_point(
+        reach,
+        r.get("niche"),
+        r.get("subscriber_count"),
+        r.get("mean_duration_seconds"),
+    )
     r["niche_slope"] = _forecast().get("slopes", {}).get(r.get("niche"))
     return r
 

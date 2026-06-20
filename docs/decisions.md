@@ -269,7 +269,7 @@ moved. The Streamlit creator page still computes its percentile within the arche
 cluster and should be aligned to the niche basis in its restyle.
 
 ## ADR-0020: Integration-rate estimate — subscriber-tier bands, not a per-view CPM
-**Status:** Accepted
+**Status:** Superseded by ADR-0022
 The cost proxy (est_cost_inr) began as mean_views × niche AdSense CPM × an unsourced
 SPONSORED_CPM_FACTOR of 20. Two later iterations were prototyped and rejected: a per-niche
 sponsored-CPM band off median reach, and the same with reach capped at the subscriber base.
@@ -301,3 +301,20 @@ upload, a dormant 13-song label) above active creators — useless to a brand. T
 applies a substance floor (video_count ≥ 10, relaxed only if it would empty the niche) and orders
 recently-active creators (videos_last_90d > 0) ahead of dormant ones, then by median reach.
 Serving/display change only; no model retrained, no committed metric value moved.
+
+## ADR-0022: Integration cost is reach-first (views × niche CPM), not subscriber tiers
+**Status:** Accepted
+ADR-0020's subscriber-tier model priced on audience size and only nudged by engagement, which
+collapsed: two channels in the same tier with low reach showed identical cost regardless of
+size, and a dormant large channel outpriced an active smaller one. Published 2026 rate cards
+price the opposite way -- a sponsored integration reduces to recent average views × niche
+sponsorship-CPM × format multiplier; what a brand buys is reach (impressions), not subscriber
+vanity. The live model (apps/ml/pricing.py) is cost = median views × niche sponsored-CPM / 1000
+× format, with: a base floor by subscriber count (1M→₹30K, 5M→₹75K, 15M→₹1.5L) so a large
+channel keeps some base when dormant; a Shorts format multiplier (×0.1 when mean_duration < 70s,
+since Shorts are cheap scroll-by impressions worth ~10% of long-form); and a ₹50L cap (the per-view runaway the tier model was
+meant to stop). Effect: a dead 5M-sub/20K-view channel prices at its ₹75K floor, below an active
+500K-sub/800K-view channel at ₹2.4-6.4L -- reach wins. CPM bands are the sourced niche rate card
+(SPONSORED_CPM_BAND). The pricing functions now take niche, subscriber_count and
+mean_duration_seconds; match.py and the API pass them. The AdSense CPM table and OLS regressor
+are unchanged. Supersedes ADR-0020. Documented in 05_CreatorPulse.md §14.

@@ -34,7 +34,7 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy import create_engine, text
 
 import apps.ml.features as features
-from apps.ml.pricing import CPM, CPM_DEFAULT, tier_band
+from apps.ml.pricing import CPM, CPM_DEFAULT, integration_cost_range
 
 REPO = Path(__file__).resolve().parents[2]
 MODELS_DIR = REPO / "models"
@@ -106,14 +106,10 @@ def attach_fraud_risk(eng, df: pd.DataFrame) -> pd.DataFrame:
 
 
 def attach_est_earnings(df: pd.DataFrame) -> pd.DataFrame:
-    """Estimated cost to sponsor one video -- the campaign-cost proxy.
-
-    Integration fees are tiered by audience size and flatten at the top, so we map
-    each creator to a subscriber tier (published per-integration INR bands) and
-    position it within the band by reach-per-subscriber (an engagement proxy). The
-    (low, high) is a negotiation spread around that point, clamped to the tier band.
-    A per-view CPM model has no ceiling and overshoots large channels; this replaces
-    it. The OLS AdSense regressor stays a methodology artifact, not this live number.
+    """Estimated cost to sponsor one video -- reach-first integration proxy.
+    Sponsorship is priced on reach (recent typical views) x niche sponsored-CPM x
+    format, floored by audience size and capped; subscribers are a floor, not the
+    driver. Single source of truth in apps/ml/pricing.py. See ADR-0022.
     """
     if "median_views" in df.columns:
         reach = pd.to_numeric(df["median_views"], errors="coerce")
@@ -121,16 +117,19 @@ def attach_est_earnings(df: pd.DataFrame) -> pd.DataFrame:
         reach = pd.Series(pd.NA, index=df.index, dtype="float64")
     mean = pd.to_numeric(df["mean_views"], errors="coerce")
     reach = reach.fillna(mean).fillna(0.0)
-    subs = pd.to_numeric(df["subscriber_count"], errors="coerce").fillna(0.0)
-    bands = subs.apply(tier_band)
-    tier_lo = bands.apply(lambda b: b[0]).astype(float)
-    tier_hi = bands.apply(lambda b: b[1]).astype(float)
-    vps = (reach / subs.where(subs > 0)).fillna(0.5)
-    pos = ((vps - 0.05) / 0.95).clip(lower=0.0, upper=1.0)
-    point = tier_lo + pos * (tier_hi - tier_lo)
-    df["est_cost_low_inr"] = (point * 0.75).clip(lower=tier_lo, upper=tier_hi)
-    df["est_cost_high_inr"] = (point * 1.35).clip(lower=tier_lo, upper=tier_hi)
-    df["est_cost_inr"] = point
+    subs = pd.to_numeric(df["subscriber_count"], errors="coerce")
+    niche = df["niche"] if "niche" in df.columns else pd.Series([None] * len(df), index=df.index)
+    if "mean_duration_seconds" in df.columns:
+        dur = pd.to_numeric(df["mean_duration_seconds"], errors="coerce")
+    else:
+        dur = pd.Series(pd.NA, index=df.index)
+    rng = [
+        integration_cost_range(r, n, s, d)
+        for r, n, s, d in zip(reach, niche, subs, dur, strict=False)
+    ]
+    df["est_cost_low_inr"] = [x[0] for x in rng]
+    df["est_cost_high_inr"] = [x[1] for x in rng]
+    df["est_cost_inr"] = [(x[0] + x[1]) / 2.0 for x in rng]
     return df
 
 
