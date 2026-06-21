@@ -1,10 +1,13 @@
 """Brand-creator match engine for CreatorPulse India.
 
 Two-stage ranking (see 05_CreatorPulse.md §13):
-  Stage 1 - embed the brand brief (BGE-small) and pull cosine top-200
+  Stage 0 - expand/disambiguate the brief via Groq (apps/ml/query_expand;
+            no-ops without GROQ_API_KEY) so short/polysemous briefs embed
+            with the creator-economy sense (ADR-0026).
+  Stage 1 - embed the (expanded) brief (BGE-small) and pull cosine top-200
             candidates from marts.channel_embeddings via pgvector.
   Stage 2 - composite re-rank:
-            0.45*cosine + 0.20*niche_overlap + 0.15*(1 - fraud_risk)
+            0.55*cosine + 0.05*niche_overlap + 0.20*(1 - fraud_risk)
             + 0.10*budget_fit + 0.10*reach_fit
             (reach_fit = log-scaled mean_views; a min-views floor first
             drops dormant/thin-reach channels so high-budget briefs
@@ -34,6 +37,7 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy import create_engine, text
 
 import apps.ml.features as features
+import apps.ml.query_expand as query_expand
 from apps.ml.pricing import CPM, CPM_DEFAULT, integration_cost_range
 
 REPO = Path(__file__).resolve().parents[2]
@@ -170,12 +174,15 @@ def match(
     rerank: bool = True,
     niche_filter: str | None = None,
     min_views: float = MIN_VIEWS_DEFAULT,
+    expand: bool = True,
+    funnel: dict | None = None,
 ) -> pd.DataFrame:
     eng = get_engine()
     creators, centroids = get_catalog()
 
     encoder = get_encoder()
-    qvec = encoder.encode([brief], normalize_embeddings=True)[0]
+    search_text = query_expand.expand_brief(brief) if expand else brief
+    qvec = encoder.encode([search_text], normalize_embeddings=True)[0]
     qlit = _vec_literal(qvec)
 
     # Stage 1 - pgvector cosine top-K (ef_search guard: default 40 caps the
@@ -192,8 +199,16 @@ def match(
         ).fetchall()
     cand = pd.DataFrame(rows, columns=["channel_id", "cosine"])
     cand = cand.merge(creators, on="channel_id", how="inner")
+    if funnel is not None:
+        funnel["search_text"] = search_text
+        funnel["niche_filter"] = niche_filter
+        funnel["min_views"] = float(min_views or 0.0)
+        funnel["candidates_cosine"] = int(len(cand))
+        funnel["top_cosine"] = float(cand["cosine"].max()) if len(cand) else 0.0
     if niche_filter:
         cand = cand[cand["niche"] == niche_filter]
+    if funnel is not None:
+        funnel["after_niche"] = int(len(cand))
     if min_views:
         # Reach floor: drop dormant / thin-reach channels so high-budget
         # briefs surface real audience reach. Skipped if it would empty
@@ -202,6 +217,8 @@ def match(
         if not floored.empty:
             cand = floored
 
+    if funnel is not None:
+        funnel["after_floor"] = int(len(cand))
     # Stage 2 - composite re-rank.
     qv = np.asarray(qvec, dtype=float)
     cand["niche_overlap"] = cand["cluster_id"].apply(
@@ -223,6 +240,8 @@ def match(
         cand["final_score"] = cand["cosine"]
     rank_col = "final_score" if rerank else "cosine"
     out = cand.sort_values(rank_col, ascending=False).head(top_k)
+    if funnel is not None:
+        funnel["returned"] = int(len(out))
     return out[
         [
             "channel_id",

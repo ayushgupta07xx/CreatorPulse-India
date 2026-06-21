@@ -375,3 +375,33 @@ Freed weight moves onto the signals that genuinely vary across creators (semanti
 **Consequences.**
 - Verified locally + in-browser: real stats for a named creator; correct case-insensitive niche trends (flagged simulated); on-topic decline for advice; context-grounded answer on a creator page; honest "couldn't find" with no context.
 - Each user message can cost up to 3 Groq calls (2 tool rounds + answer); fine for real one-user-at-a-time use, but rapid-fire testing can hit the free-tier RPM.
+
+## ADR-0026 — Stage-0 Groq query expansion for brief disambiguation
+
+**Status:** Accepted (Day 14)
+
+**Context:** BGE-small compresses short or polysemous brand briefs into weakly
+discriminative vectors. Diagnosed this chat: a one-word brief like "roasting"
+embeds toward the literal (cooking) sense and surfaces Food creators instead of
+Comedy; short briefs generally under-retrieve. This is an embedding ceiling, not
+a §13 weighting bug — the ADR-0023 reweight does not address it.
+
+**Decision:** Add a Stage-0 ahead of Stage-1 embedding. `apps/ml/query_expand.py`
+calls Groq (`llama-3.3-70b-versatile`, reused via `requests` — no new dependency)
+to disambiguate the brief toward the creator-economy sense and append 4–8 concrete
+creator-content phrases. Expansion is **additive** (the original brief is preserved
+in the embedded text) and **no-ops to the raw brief** when `GROQ_API_KEY` is unset
+or the call fails/times out, so CI and offline runs stay green and a match never
+blocks on the LLM. `match()` gains `expand=True` (default) and an optional `funnel`
+dict that records the candidate funnel for a deterministic "why no results"
+explainer (`explain_results()`).
+
+**Consequences:**
+- Short/polysemous briefs retrieve the right niche ("roasting" → Comedy/Reactions,
+  verified: top_cosine 0.71, Comedy in top-5).
+- Stage-0 is upstream of both A/B variants and does not touch §13 weights or
+  `analysis/ab_match_rerank.py` (which has no live `match()` call), so the
+  simulated 23% lift is unchanged and reproducible.
+- Up to one extra Groq call per match request; covered by the free tier for
+  real single-user traffic.
+- The OLS earnings / pricing artifacts and fraud model are untouched.
