@@ -395,28 +395,146 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+    context: dict | None = None
+
+
+def _creator_brief(r: dict) -> dict:
+    return {
+        "channel_id": r.get("channel_id"),
+        "title": r.get("title"),
+        "niche": r.get("niche"),
+        "subscribers": r.get("subscriber_count"),
+        "median_views": r.get("median_views"),
+        "mean_views": r.get("mean_views"),
+        "engagement_risk_score": r.get("fraud_risk"),
+        "est_sponsor_cost_inr": [r.get("est_cost_low_inr"), r.get("est_cost_high_inr")],
+    }
+
+
+def _creator_full(r: dict) -> dict:
+    return {
+        "channel_id": r.get("channel_id"),
+        "title": r.get("title"),
+        "niche": r.get("niche"),
+        "archetype": r.get("archetype"),
+        "subscribers": r.get("subscriber_count"),
+        "total_views": r.get("view_count"),
+        "videos": r.get("video_count"),
+        "median_views": r.get("median_views"),
+        "mean_views": r.get("mean_views"),
+        "engagement_risk_score": r.get("fraud_risk"),
+        "est_sponsor_cost_inr": r.get("est_sponsored_cost_inr"),
+        "niche_slope": r.get("niche_slope"),
+    }
+
+
+def _match_brief(r: dict) -> dict:
+    score = r.get("final_score")
+    if score is None:
+        score = r.get("score")
+    return {
+        "channel_id": r.get("channel_id"),
+        "title": r.get("title"),
+        "niche": r.get("niche"),
+        "match_score": round(float(score) * 100) if score is not None else None,
+        "subscribers": r.get("subscriber_count"),
+        "mean_views": r.get("mean_views"),
+    }
+
+
+def _chat_tool_executor(name: str, args: dict) -> str:
+    """Dispatch a whitelisted chatbot tool to the real handlers, returning compact JSON.
+    Never fabricates: empty or not-found results come back as such so the model says so."""
+    try:
+        if name == "search_creators":
+            q = str(args.get("query", "")).strip()
+            if not q:
+                return json.dumps({"results": []})
+            rows = list_creators(q=q, limit=5)
+            return json.dumps({"results": [_creator_brief(r) for r in rows]})
+        if name == "get_creator_details":
+            cid = str(args.get("channel_id", "")).strip()
+            return json.dumps(_creator_full(get_creator(cid)))
+        if name == "find_creators":
+            brief = str(args.get("brief", "")).strip()
+            if not brief:
+                return json.dumps({"results": []})
+            niche = args.get("niche") or None
+            if niche:
+                opts = _display()["niche"].dropna().unique().tolist()
+                niche = next((o for o in opts if o.lower() == str(niche).lower()), niche)
+            req = MatchRequest(
+                brief=brief,
+                niche_filter=niche,
+                budget_lakh=float(args.get("budget_lakh") or 15),
+            )
+            rows = post_match(req)[:5]
+            return json.dumps({"results": [_match_brief(r) for r in rows]})
+        if name == "niche_demand":
+            niche = str(args.get("niche", "")).strip()
+            available = list(_forecast().get("forecasts", {}).keys())
+            resolved = next((k for k in available if k.lower() == niche.lower()), None)
+            if resolved is None:
+                return json.dumps(
+                    {"error": f"no forecast for '{niche}'", "available_niches": available}
+                )
+            fc = get_niche_forecast(resolved)
+            slope = fc.get("slope") or 0
+            direction = "growing" if slope > 0 else "declining" if slope < 0 else "flat"
+            return json.dumps(
+                {
+                    "niche": fc.get("niche", resolved),
+                    "slope": fc.get("slope"),
+                    "direction": direction,
+                    "note": "forecast history is simulated",
+                }
+            )
+        return json.dumps({"error": f"unknown tool: {name}"})
+    except HTTPException as e:
+        return json.dumps({"error": str(e.detail)})
+    except (ValueError, KeyError, TypeError) as e:
+        return json.dumps({"error": f"tool failed: {e}"})
+
+
+def _with_context(msgs: list[dict], context: dict | None) -> list[dict]:
+    """Prepend a short note to the last user turn naming the page the user is on, so
+    the model can pick the right tool (e.g. fetch the creator they're looking at)."""
+    if not context or not msgs:
+        return msgs
+    cid = context.get("channel_id")
+    page = context.get("page")
+    if cid:
+        note = f"[The user is currently viewing the creator profile channel_id={cid}.] "
+    elif page:
+        note = f"[The user is currently on the {page} page.] "
+    else:
+        return msgs
+    last = msgs[-1]
+    return [*msgs[:-1], {**last, "content": note + last["content"]}]
 
 
 @app.post("/chat")
 def post_chat(req: ChatRequest) -> dict:
-    """Grounded product-help assistant (see apps/api/chatbot.py). Sync on purpose
-    so FastAPI runs the upstream call in a threadpool."""
     msgs = prepare_messages([m.model_dump() for m in req.messages])
     if not msgs:
         raise HTTPException(status_code=400, detail="Send a question to the assistant.")
+    msgs = _with_context(msgs, req.context)
     try:
-        reply = groq_chat(msgs)
+        reply = groq_chat(msgs, tool_executor=_chat_tool_executor)
     except GroqError as e:
         reason = str(e)
         if reason == "unconfigured":
             raise HTTPException(
-                status_code=503, detail="The assistant isn't set up right now."
+                status_code=503,
+                detail="The assistant isn't configured yet.",
             ) from e
         if reason == "rate_limited":
             raise HTTPException(
-                status_code=429, detail="The assistant is busy — try again shortly."
+                status_code=429,
+                detail="The assistant is busy right now — try again in a moment.",
             ) from e
         raise HTTPException(
-            status_code=502, detail="The assistant is temporarily unavailable."
+            status_code=502,
+            detail="The assistant is temporarily unavailable.",
         ) from e
     return {"reply": reply}

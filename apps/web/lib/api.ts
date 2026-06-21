@@ -160,8 +160,8 @@ export interface ChatMessage {
 }
 
 // Grounded product assistant (see apps/api/chatbot.py). Returns { reply }.
-export const chat = (messages: ChatMessage[]) =>
+export const chat = (messages: ChatMessage[], context?: Record<string, unknown>) =>
   getJSON<{ reply: string }>("/chat", {
     method: "POST",
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify(context ? { messages, context } : { messages }),
   });

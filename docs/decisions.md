@@ -358,3 +358,20 @@ Freed weight moves onto the signals that genuinely vary across creators (semanti
 **Consequences.**
 - Verified locally: the bot states the 0.83 fraud F1 is a simulated cohort (not real fraud), declines to invent a specific creator's stats, and refuses off-topic advice.
 - A follow-up ADR will cover **bounded tool-calling** (letting the bot fetch real data from the product's own endpoints), which extends — but must not breach — the "product guide, not open analytics" boundary set here.
+
+## ADR-0025: Bounded tool-calling + page context for the product assistant
+
+**Status:** Accepted. Extends ADR-0024.
+
+**Context.** The grounded assistant (ADR-0024) could explain the product but couldn't answer with real data ("what are CarryMinati's stats?"), so it had to say it didn't know. Letting it query the product's own endpoints fixes that — but unbounded data Q&A would breach the AskBharat boundary set in ADR-0024.
+
+**Decision.**
+- **Whitelisted tool-calling**, four read-only tools mapping to existing endpoints: `search_creators`→`list_creators`, `get_creator_details`→`get_creator`, `find_creators`→`post_match`, `niche_demand`→`get_niche_forecast`. No new endpoints, no write paths.
+- **Bounded loop:** at most 2 tool rounds per answer (`MAX_TOOL_ROUNDS`), after which the model must answer in text. Tool executor injected by `main.py` (no circular import); each result trimmed to compact JSON.
+- **Never fabricate on empty:** an empty/not-found tool result is returned as such; the prompt forbids filling from memory. Niche names resolve case-insensitively against the real niche set; a true miss returns the actual niche list rather than a guess.
+- **Page context:** the widget passes the current route's `channel_id` (via `usePathname`) so the bot can ground on the creator being viewed; absent context, it asks rather than assumes.
+- **Boundary reaffirmed:** this is *product navigation over the product's own surfaces*, not open analytics over the dataset — that lane remains AskBharat's. The tools are a fixed, product-shaped set, not a query interface.
+
+**Consequences.**
+- Verified locally + in-browser: real stats for a named creator; correct case-insensitive niche trends (flagged simulated); on-topic decline for advice; context-grounded answer on a creator page; honest "couldn't find" with no context.
+- Each user message can cost up to 3 Groq calls (2 tool rounds + answer); fine for real one-user-at-a-time use, but rapid-fire testing can hit the free-tier RPM.

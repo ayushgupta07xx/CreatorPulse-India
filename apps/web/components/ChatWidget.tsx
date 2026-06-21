@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { chat, type ChatMessage } from "@/lib/api";
+import { usePathname } from "next/navigation";
 
 const GREETING: ChatMessage = {
   role: "assistant",
@@ -23,7 +24,17 @@ function track(event: string) {
   }
 }
 
+function chatContext(pathname: string | null): Record<string, string> | undefined {
+  if (!pathname) return undefined;
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts.length === 2 && parts[0] === "creators") {
+    return { page: "creator", channel_id: decodeURIComponent(parts[1]) };
+  }
+  return undefined;
+}
+
 export default function ChatWidget() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
   const [input, setInput] = useState("");
@@ -47,7 +58,7 @@ export default function ChatWidget() {
     try {
       // drop the canned greeting; send only real turns (ends with the user's question)
       const history = next.filter((m, i) => !(i === 0 && m === GREETING));
-      const { reply } = await chat(history);
+      const { reply } = await chat(history, chatContext(pathname));
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
     } catch (e) {
       setError(
