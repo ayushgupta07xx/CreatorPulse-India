@@ -28,7 +28,7 @@ type Sort = "match" | "cost" | "reach" | "risk";
 type State =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "done"; results: MatchResult[] }
+  | { kind: "done"; results: MatchResult[]; explainer: string | null }
   | { kind: "error"; message: string };
 
 const RISK_CLASS: Record<string, string> = {
@@ -64,14 +64,14 @@ export default function BrandsPage() {
     if (!text) return;
     setState({ kind: "loading" });
     try {
-      const results = await matchCreators({
+      const res = await matchCreators({
         brief: text,
         budget_lakh: budget,
         niche_filter: niche || null,
         top_k: 20,
         rerank: true,
       });
-      setState({ kind: "done", results });
+      setState({ kind: "done", results: res.results, explainer: res.explainer });
     } catch (e) {
       setState({
         kind: "error",
@@ -201,8 +201,12 @@ export default function BrandsPage() {
 
         {state.kind === "done" && state.results.length === 0 && (
           <p className="text-muted">
-            No creators cleared the budget and reach floor for this brief. Try a
-            broader niche or a higher budget.
+            {state.explainer ?? (
+              <>
+                No creators cleared the budget and reach floor for this brief. Try
+                a broader niche or a higher budget.
+              </>
+            )}
           </p>
         )}
 

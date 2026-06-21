@@ -71,8 +71,14 @@ export interface MatchRequest {
   min_views?: number;
 }
 
+export interface MatchResponse {
+  results: MatchResult[];
+  explainer: string | null;
+  search_text: string;
+}
+
 export const matchCreators = (req: MatchRequest) =>
-  getJSON<MatchResult[]>("/match", {
+  getJSON<MatchResponse>("/match", {
     method: "POST",
     body: JSON.stringify(req),
   });

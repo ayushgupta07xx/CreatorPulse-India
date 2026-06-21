@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 import apps.ml.match as match_engine
+import apps.ml.query_expand as query_expand
 from apps.api.cache import cache_get, cache_set
 from apps.api.chatbot import GroqError, groq_chat, prepare_messages
 from apps.ingest import quota_tracker
@@ -369,8 +370,7 @@ class MatchRequest(BaseModel):
     min_views: float = match_engine.MIN_VIEWS_DEFAULT
 
 
-@app.post("/match")
-def post_match(req: MatchRequest) -> list[dict]:
+def _match_records(req: MatchRequest, funnel: dict | None = None) -> list[dict]:
     out = match_engine.match(
         req.brief,
         budget_lakh=req.budget_lakh,
@@ -378,6 +378,7 @@ def post_match(req: MatchRequest) -> list[dict]:
         rerank=req.rerank,
         niche_filter=req.niche_filter,
         min_views=req.min_views,
+        funnel=funnel,
     )
     disp_cols = [
         c
@@ -386,6 +387,18 @@ def post_match(req: MatchRequest) -> list[dict]:
     ]
     out = out.merge(_display()[disp_cols], on="channel_id", how="left")
     return _records(out)
+
+
+@app.post("/match")
+def post_match(req: MatchRequest) -> dict:
+    funnel: dict = {}
+    results = _match_records(req, funnel=funnel)
+    explainer = query_expand.explain_results(funnel) if not results else None
+    return {
+        "results": results,
+        "explainer": explainer,
+        "search_text": funnel.get("search_text", req.brief),
+    }
 
 
 class ChatMessage(BaseModel):
@@ -468,8 +481,12 @@ def _chat_tool_executor(name: str, args: dict) -> str:
                 niche_filter=niche,
                 budget_lakh=float(args.get("budget_lakh") or 15),
             )
-            rows = post_match(req)[:5]
-            return json.dumps({"results": [_match_brief(r) for r in rows]})
+            funnel: dict = {}
+            rows = _match_records(req, funnel=funnel)[:5]
+            payload: dict = {"results": [_match_brief(r) for r in rows]}
+            if not rows:
+                payload["explainer"] = query_expand.explain_results(funnel)
+            return json.dumps(payload)
         if name == "niche_demand":
             niche = str(args.get("niche", "")).strip()
             available = list(_forecast().get("forecasts", {}).keys())
