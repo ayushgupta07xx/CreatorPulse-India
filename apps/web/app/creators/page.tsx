@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { searchCreators, type CreatorSummary } from "@/lib/api";
 import CreatorCard from "@/components/CreatorCard";
@@ -16,10 +16,15 @@ export default function CreatorsPage() {
   const [q, setQ] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
 
-  async function run() {
-    const term = q.trim();
+  async function run(initial?: string) {
+    const term = (initial ?? q).trim();
     if (!term) return;
     setState({ kind: "loading" });
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}?q=${encodeURIComponent(term)}`,
+    );
     try {
       const results = await searchCreators(term, 24);
       setState({ kind: "done", results });
@@ -30,6 +35,15 @@ export default function CreatorsPage() {
       });
     }
   }
+
+  useEffect(() => {
+    const initial = new URLSearchParams(window.location.search).get("q");
+    if (initial) {
+      setQ(initial);
+      run(initial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mx-auto max-w-wrap px-6 py-12">
@@ -54,7 +68,7 @@ export default function CreatorsPage() {
             className="w-full rounded-xl border border-white/10 bg-surface/60 px-4 py-3 text-ink placeholder:text-muted focus:border-violet focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet"
           />
           <button
-            onClick={run}
+            onClick={() => run()}
             className="btn-sheen shrink-0 rounded-xl bg-ink px-6 py-3 text-sm font-semibold text-bg transition-transform hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet"
           >
             Search
