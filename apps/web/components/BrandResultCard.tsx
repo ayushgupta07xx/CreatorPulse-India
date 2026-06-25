@@ -71,7 +71,17 @@ export default function BrandResultCard({
               </div>
             )}
             <div className="min-w-0">
-              <div className="truncate font-semibold text-ink">{r.title}</div>
+              <div className="flex items-center gap-2">
+                <div className="truncate font-semibold text-ink">{r.title}</div>
+                {r.is_brand_channel && (
+                  <span
+                    className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted"
+                    title="Corporate / brand-owned channel — not an individual creator"
+                  >
+                    Corporate
+                  </span>
+                )}
+              </div>
               <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                 <span className="rounded bg-white/5 px-2 py-0.5 text-xs text-muted">
                   {r.niche}

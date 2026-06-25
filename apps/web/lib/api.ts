@@ -60,6 +60,7 @@ export interface MatchResult extends CreatorSummary {
   niche_overlap: number;
   budget_fit: number;
   reach_fit: number;
+  is_brand_channel: boolean;
 }
 
 export interface MatchRequest {
