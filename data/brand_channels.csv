@@ -1,0 +1,27 @@
+# Corporate / brand-owned channel suppression registry.
+# Used by apps/ml/match.py to FLAG (not delete) brand-owned channels so a brand
+# searching for individual creator partners isn't shown other brands. Soft penalty
+# in Stage-2 re-rank + a "Corporate channel" UI label. Identity-based (title/url
+# word-boundary match), NOT an ML classifier — the data has no separating
+# behavioral signal (see ADR / model card). Tokens are lowercase; matched on word
+# boundaries against title + custom_url.
+#
+# Seeded from data/known_brands.csv brand names + telecom/marketplace corporates
+# observed in the corpus. "idea" deliberately excluded (false-positives real
+# creators: "DP art idea", "Shopping IDEA").
+token,reason
+jio,telecom/streaming corporate
+jiohotstar,streaming corporate
+jiostudios,streaming corporate
+airtel,telecom corporate
+vodafone,telecom corporate
+flipkart,marketplace corporate
+amazon,marketplace corporate
+myntra,marketplace corporate
+paytm,fintech corporate
+zomato,food-delivery corporate
+swiggy,food-delivery corporate
+mamaearth,brand (known_brands.csv)
+boat,brand (known_brands.csv)
+sugar cosmetics,brand (known_brands.csv)
+wow skin science,brand (known_brands.csv)

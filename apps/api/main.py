@@ -421,6 +421,7 @@ def _creator_brief(r: dict) -> dict:
         "mean_views": r.get("mean_views"),
         "engagement_risk_score": r.get("fraud_risk"),
         "est_sponsor_cost_inr": [r.get("est_cost_low_inr"), r.get("est_cost_high_inr")],
+        "is_brand_channel": bool(r.get("is_brand_channel", False)),
     }
 
 

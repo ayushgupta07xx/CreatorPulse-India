@@ -52,7 +52,41 @@ W_NICHE = 0.05
 W_FRAUD = 0.20
 W_BUDGET = 0.10
 W_REACH = 0.10
+W_BRAND_PENALTY = 0.15  # soft demote for corporate/brand-owned channels (ADR-0029)
 MIN_VIEWS_DEFAULT = 5000.0
+
+_BRAND_TOKENS: list[str] | None = None
+
+
+def _brand_tokens() -> list[str]:
+    """Lowercase tokens from data/brand_channels.csv (committed registry)."""
+    global _BRAND_TOKENS
+    if _BRAND_TOKENS is None:
+        import csv
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[2] / "data" / "brand_channels.csv"
+        toks: list[str] = []
+        if path.exists():
+            with path.open(encoding="utf-8") as fh:
+                for row in csv.DictReader(r for r in fh if not r.startswith("#")):
+                    t = (row.get("token") or "").strip().lower()
+                    if t:
+                        toks.append(t)
+        _BRAND_TOKENS = toks
+    return _BRAND_TOKENS
+
+
+def _flag_brand(text_series: pd.Series) -> pd.Series:
+    """True where any registry token appears on a word boundary in the text."""
+    import re
+
+    toks = _brand_tokens()
+    if not toks:
+        return pd.Series(False, index=text_series.index)
+    pat = re.compile(r"\b(" + "|".join(re.escape(t) for t in toks) + r")\b")
+    low = text_series.fillna("").str.lower()
+    return low.apply(lambda s: bool(pat.search(s)))
 
 
 def get_engine():
@@ -76,6 +110,9 @@ def load_creators(eng, bundle) -> tuple[pd.DataFrame, dict]:
     emb["vec"] = emb["embedding"].apply(_parse_vec)
     feats = pd.read_sql("select * from marts.mart_creator_features", eng)
     df = emb.merge(feats, on="channel_id", how="inner")
+    ident = pd.read_sql("select channel_id, title, custom_url from marts.dim_channel", eng)
+    df = df.merge(ident, on="channel_id", how="left")
+    df["is_brand_channel"] = _flag_brand(df["title"].fillna("") + " " + df["custom_url"].fillna(""))
 
     content = bundle["pca"].transform(np.vstack(df["vec"].to_numpy()))
     beh = df[bundle["behavioral_cols"]].astype(float).copy()
@@ -233,6 +270,7 @@ def match(
         + W_FRAUD * (1.0 - cand["fraud_risk"])
         + W_BUDGET * cand["budget_fit"]
         + W_REACH * cand["reach_fit"]
+        - W_BRAND_PENALTY * cand["is_brand_channel"].astype(float)
     )
     if not rerank:
         # Variant A (A/B match_rerank_v2): pure Stage-1 cosine. Surface cosine as
@@ -254,6 +292,8 @@ def match(
             "reach_fit",
             "est_cost_inr",
             "final_score",
+            "title",
+            "is_brand_channel",
         ]
     ].reset_index(drop=True)
 
