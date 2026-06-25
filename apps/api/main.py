@@ -571,7 +571,11 @@ def _posthog():
     if not key:
         _PH = None
         return None
-    import posthog
+    try:
+        import posthog
+    except ModuleNotFoundError:
+        _PH = None
+        return None
 
     posthog.api_key = key
     posthog.host = os.environ.get("POSTHOG_HOST") or "https://us.i.posthog.com"
