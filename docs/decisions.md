@@ -405,3 +405,15 @@ explainer (`explain_results()`).
 - Up to one extra Groq call per match request; covered by the free tier for
   real single-user traffic.
 - The OLS earnings / pricing artifacts and fraud model are untouched.
+
+## ADR-0027 — Chat feedback via a backend `/feedback` endpoint (server-side PostHog), not posthog-js
+
+**Status:** Accepted (Day 14)
+
+**Context:** The Next.js frontend had no PostHog client at all — the existing 12 events are captured server-side from the Streamlit app (`apps/frontend/components/analytics.py`, posthog-python 7.x). Adding the chat thumbs-up/down meant choosing where the `chat_feedback` event originates. The widget's `window.posthog?.capture?.()` was a silent no-op (no posthog-js loaded), so "the button clicked" never proved "the event landed."
+
+**Decision:** Capture feedback **server-side**, matching the existing pattern. A `POST /feedback` endpoint on the FastAPI app captures `chat_feedback` via posthog-python using the same `POSTHOG_API_KEY` the Streamlit app uses; the widget POSTs `{rating, page, distinct_id}` with a persisted anonymous `crypto.randomUUID` id. `posthog` moved from the `app` extra into core `[project] dependencies` so the Space's curated `pip install -e .` installs it; the import is `ModuleNotFoundError`-guarded so the endpoint degrades to a clean no-op rather than 500 if the dep/key is ever absent.
+
+**Alternatives rejected:** Adding posthog-js to Next would split ingestion across two paths and require a `NEXT_PUBLIC_POSTHOG_KEY` baked at Vercel build time — larger surface, no benefit. True server-side SSE streaming was deferred (the `*.hf.space` edge proxy likely buffers it, and the ≤2 tool-round loop blocks first-token anyway); the chat UI uses client-side progressive reveal instead.
+
+**Consequences:** Single ingestion path (all events posthog-python). Feed-verified end-to-end (curl smoke + real widget click both land in PostHog Activity). The widget's pre-existing `chat_opened` / `chat_message_sent` `track()` calls remain dead no-ops — the frontend has no posthog-js — which is acceptable: feedback is the event that matters here.
