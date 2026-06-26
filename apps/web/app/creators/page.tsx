@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SkeletonGrid from "@/components/SkeletonGrid";
 import Link from "next/link";
 import { searchCreators, type CreatorSummary } from "@/lib/api";
 import CreatorCard from "@/components/CreatorCard";
@@ -77,7 +78,7 @@ export default function CreatorsPage() {
       </Reveal>
 
       <div className="mt-10">
-        {state.kind === "loading" && <p className="text-muted">Searching…</p>}
+        {state.kind === "loading" && <SkeletonGrid variant="creator" count={6} />}
 
         {state.kind === "error" && (
           <p className="text-risk-high">

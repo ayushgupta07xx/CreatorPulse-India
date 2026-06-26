@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { matchCreators, type MatchResult } from "@/lib/api";
+import SkeletonGrid from "@/components/SkeletonGrid";
 import {
   formatCompact,
   formatINR,
@@ -190,7 +191,7 @@ export default function BrandsPage() {
       </Reveal>
 
       <div className="mt-10">
-        {state.kind === "loading" && <p className="text-muted">Matching creators…</p>}
+        {state.kind === "loading" && <SkeletonGrid variant="brand" count={4} />}
 
         {state.kind === "error" && (
           <p className="text-risk-high">
