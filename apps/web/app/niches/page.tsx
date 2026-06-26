@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import EmptyState, { AlertIcon } from "@/components/EmptyState";
 import SkeletonGrid from "@/components/SkeletonGrid";
 import Link from "next/link";
 import { getNiches, type NicheSummary } from "@/lib/api";
@@ -66,9 +67,12 @@ export default function NichesPage() {
       </div>
 
       {failed && (
-        <p className="mt-8 text-muted">
-          Couldn&apos;t load niches. The API may be waking up — try again shortly.
-        </p>
+        <EmptyState
+          tone="error"
+          icon={<AlertIcon />}
+          title="Couldn't load niches"
+          body="The API may be waking up — try again shortly."
+        />
       )}
       {!niches && !failed && <SkeletonGrid variant="niche" count={6} />}
 

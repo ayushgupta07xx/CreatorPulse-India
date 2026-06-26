@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import EmptyState, { AlertIcon, SearchOffIcon } from "@/components/EmptyState";
 import { matchCreators, type MatchResult } from "@/lib/api";
 import SkeletonGrid from "@/components/SkeletonGrid";
 import {
@@ -194,21 +195,23 @@ export default function BrandsPage() {
         {state.kind === "loading" && <SkeletonGrid variant="brand" count={4} />}
 
         {state.kind === "error" && (
-          <p className="text-risk-high">
-            Couldn&apos;t reach the match service ({state.message}). The API may be
-            waking up — try again in a few seconds.
-          </p>
+          <EmptyState
+            tone="error"
+            icon={<AlertIcon />}
+            title="Couldn't reach the match service"
+            body={`The API may be waking up (${state.message}). Try again in a few seconds.`}
+          />
         )}
 
         {state.kind === "done" && state.results.length === 0 && (
-          <p className="text-muted">
-            {state.explainer ?? (
-              <>
-                No creators cleared the budget and reach floor for this brief. Try
-                a broader niche or a higher budget.
-              </>
-            )}
-          </p>
+          <EmptyState
+            icon={<SearchOffIcon />}
+            title="No matching creators"
+            body={
+              state.explainer ??
+              "No creators cleared the budget and reach floor for this brief. Try a broader niche or a higher budget."
+            }
+          />
         )}
 
         {state.kind === "done" && state.results.length > 0 && (

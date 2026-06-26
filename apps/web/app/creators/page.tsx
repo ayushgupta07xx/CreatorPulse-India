@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState, { AlertIcon, SearchOffIcon } from "@/components/EmptyState";
 import SkeletonGrid from "@/components/SkeletonGrid";
 import Link from "next/link";
 import { searchCreators, type CreatorSummary } from "@/lib/api";
@@ -81,18 +82,21 @@ export default function CreatorsPage() {
         {state.kind === "loading" && <SkeletonGrid variant="creator" count={6} />}
 
         {state.kind === "error" && (
-          <p className="text-risk-high">
-            Couldn&apos;t reach the search service ({state.message}). Try again in
-            a moment.
-          </p>
+          <EmptyState
+            tone="error"
+            icon={<AlertIcon />}
+            title="Couldn't reach the search service"
+            body={`${state.message}. Try again in a moment.`}
+          />
         )}
 
         {state.kind === "done" && state.results.length === 0 && (
-          <p className="text-muted">
-            “{q.trim()}” isn’t in CreatorPulse’s index. The catalogue is a
-            fixed set of Indian creators, so not every channel is covered —
-            try another name.
-          </p>
+          <EmptyState
+            icon={<SearchOffIcon />}
+            title={`No match for “${q.trim()}”`}
+            body="The catalogue is a
+            fixed set of Indian creators, so not every channel is covered — try another name."
+          />
         )}
 
         {state.kind === "done" && state.results.length > 0 && (

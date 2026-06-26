@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState, { AlertIcon, InboxIcon } from "@/components/EmptyState";
 import SkeletonGrid from "@/components/SkeletonGrid";
 import Link from "next/link";
 import {
@@ -85,9 +86,12 @@ export default function NicheDetail({ params }: { params: { niche: string } }) {
       </Reveal>
 
       {failed && (
-        <p className="mt-8 text-muted">
-          Couldn&apos;t load this niche. The API may be waking up — try again shortly.
-        </p>
+        <EmptyState
+          tone="error"
+          icon={<AlertIcon />}
+          title="Couldn't load this niche"
+          body="The API may be waking up — try again shortly."
+        />
       )}
 
       {summary && (
@@ -134,7 +138,7 @@ export default function NicheDetail({ params }: { params: { niche: string } }) {
         </Reveal>
         {!creators && !failed && <SkeletonGrid variant="creator" count={6} />}
         {creators && creators.length === 0 && (
-          <p className="mt-6 text-muted">No creators indexed in this niche.</p>
+          <EmptyState icon={<InboxIcon />} title="No creators here yet" body="No creators are indexed in this niche." />
         )}
         {creators && creators.length > 0 && (
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

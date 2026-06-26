@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import EmptyState, { AlertIcon } from "@/components/EmptyState";
 import CreatorDetailSkeleton from "@/components/CreatorDetailSkeleton";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -130,9 +131,12 @@ export default function CreatorProfile({ params }: { params: { id: string } }) {
         >
           ←
         </button>
-        <p className="mt-6 text-risk-high">
-          Couldn&apos;t load this creator ({err || "not indexed"}).
-        </p>
+        <EmptyState
+          tone="error"
+          icon={<AlertIcon />}
+          title="Couldn't load this creator"
+          body={err || "This channel isn't in the index."}
+        />
       </div>
     );
   }
