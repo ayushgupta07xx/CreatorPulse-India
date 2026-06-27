@@ -223,8 +223,8 @@ def _validate_brief(brief: str) -> str | None:
     Catches keysmash / nonsense so the matcher doesn't return confident matches
     for garbage. Three cheap, deterministic signals (no model):
       - any single token >= 16 chars (no human writes a 20-char unbroken word)
-      - vowel ratio < 0.20 over alpha chars (>=6 alpha) -> consonant keysmash
-      - zero tokens appear in the bundled word list -> not recognizable language
+      - any token >=6 alpha with vowel ratio < 0.20 (y counts) -> keysmash
+      (absence of a wordlist hit is NOT a reject signal — only positive gibberish is)
     """
     import re
 
@@ -248,12 +248,19 @@ def _validate_brief(brief: str) -> str | None:
     # Otherwise apply gibberish heuristics.
     if max((len(t) for t in tokens), default=0) >= 16:
         return "gibberish_token"
-    alpha = [c for c in raw.lower() if c.isalpha()]
-    if len(alpha) >= 6:
-        vowels = sum(c in "aeiou" for c in alpha)
-        if vowels / len(alpha) < 0.20:
-            return "low_vowel_ratio"
-    return "no_known_words"
+    # Per-token vowel ratio (y counts): averaging over the whole brief lets one
+    # consonant-heavy keysmash token hide behind another's vowels, so check each
+    # substantial token independently.
+    for t in tokens:
+        t_alpha = [c for c in t if c.isalpha()]
+        if len(t_alpha) >= 6:
+            vowels = sum(c in "aeiouy" for c in t_alpha)
+            if vowels / len(t_alpha) < 0.20:
+                return "low_vowel_ratio"
+    # No gibberish signal fired. A 173-word list can't represent real language,
+    # so absence of a wordlist hit is NOT evidence of nonsense — let it through to
+    # query-expansion (ADR-0026), which exists precisely for thin/polysemous briefs.
+    return None
 
 
 _BRIEF_REJECT_MSG = (
