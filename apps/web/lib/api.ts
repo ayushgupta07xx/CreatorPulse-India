@@ -31,6 +31,9 @@ export interface CreatorSummary {
   est_cost_inr: number;
   est_cost_low_inr: number;
   est_cost_high_inr: number;
+  // True when the channel's typical upload is a Short (<70s) — pricing applies the
+  // Shorts format multiplier, and the card shows a Shorts chip.
+  is_short?: boolean | null;
 }
 
 async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {

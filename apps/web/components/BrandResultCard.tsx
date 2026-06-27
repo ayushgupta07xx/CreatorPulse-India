@@ -92,6 +92,14 @@ export default function BrandResultCard({
                 >
                   {humanizeArchetype(r.archetype)}
                 </span>
+                {r.is_short && (
+                  <span
+                    className="rounded bg-violet/15 px-2 py-0.5 text-xs font-medium text-violet"
+                    title="Short-form channel — integration priced at the Shorts rate (~0.5× long-form)"
+                  >
+                    Shorts
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -117,8 +125,10 @@ export default function BrandResultCard({
               <dd className="font-mono text-ink">{formatCompact(r.subscriber_count)}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted">Avg. views</dt>
-              <dd className="font-mono text-ink">{formatCompact(r.mean_views)}</dd>
+              <dt className="text-xs text-muted">Typical views</dt>
+              <dd className="font-mono text-ink">
+                {formatCompact(r.median_views ?? r.mean_views)}
+              </dd>
             </div>
             <div>
               <dt className="text-xs text-muted">Est. sponsored cost</dt>

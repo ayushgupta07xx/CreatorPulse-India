@@ -9,7 +9,7 @@ sponsored-CPM / 1000 x format multiplier, floored by audience size (a large chan
 commands some base even when dormant) and capped (mega-channels negotiate flat, not
 per-view). Calibrated to published 2026 rate cards -- an integration reduces to
 "recent average views x niche CPM x format multiplier"; Shorts pay ~40-60% of
-long-form. See 05_CreatorPulse.md s14, docs/decisions.md ADR-0022.
+long-form (0.5x midpoint). See 05_CreatorPulse.md s14, docs/decisions.md ADR-0022.
 
 The AdSense CPM table (CPM) and the OLS earnings regressor are unchanged methodology
 artifacts, not this number.
@@ -53,7 +53,7 @@ SPONSORED_CPM_BAND_DEFAULT = (400, 1000)
 
 _CAP = 5_000_000.0  # Rs50L ceiling on one integration
 _FLOOR_MIN = 5_000.0  # nobody is free
-_SHORTS_FORMAT = 0.1  # Shorts pay ~10% of long-form (cheap scroll-by views)
+_SHORTS_FORMAT = 0.5  # Shorts pay ~40-60% of long-form; midpoint per 2026 IN rate cards
 _SHORTS_MAX_SECONDS = 70.0
 # Modest base floor by audience size: a large channel commands *some* base even when
 # recent reach is low ("1M+ subs is a big deal"), but reach drives everything above it.

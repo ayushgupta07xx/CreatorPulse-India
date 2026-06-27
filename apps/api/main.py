@@ -382,10 +382,20 @@ def _match_records(req: MatchRequest, funnel: dict | None = None) -> list[dict]:
     )
     disp_cols = [
         c
-        for c in ("channel_id", "thumbnail_url", "subscriber_count", "mean_views")
+        for c in (
+            "channel_id",
+            "thumbnail_url",
+            "subscriber_count",
+            "mean_views",
+            "median_views",
+            "mean_duration_seconds",
+        )
         if c in _display().columns
     ]
     out = out.merge(_display()[disp_cols], on="channel_id", how="left")
+    if "mean_duration_seconds" in out.columns:
+        dur = pd.to_numeric(out["mean_duration_seconds"], errors="coerce")
+        out["is_short"] = (dur < 70).where(dur.notna(), other=False)
     return _records(out)
 
 
