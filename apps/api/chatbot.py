@@ -200,11 +200,12 @@ def _call(
     convo: list[dict],
     tools: list | None,
     response_format: dict | None = None,
+    temperature: float = 0.2,
 ) -> dict:
     payload: dict = {
         "model": model,
         "messages": convo,
-        "temperature": 0.2,
+        "temperature": temperature,
         "max_tokens": 700,
         "reasoning_effort": "low",
     }

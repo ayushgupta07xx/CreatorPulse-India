@@ -78,7 +78,8 @@ PRODUCT_FACTS = (
     "- Data source: channel stats come from the official YouTube Data API v3; the channel "
     "seed list comes from an open Kaggle dataset (ODC-BY, credited in LEGAL.md). No scraping. "
     "Instagram is out of scope (v2). "
-    "Creator counts/niches read live from the product DB.\n"
+    "Corpus: ~12,500 (exactly 12,547) Indian YouTube creators across 20 niches, "
+    "one metrics snapshot. Creator counts/niches read live from the product DB.\n"
 )
 
 
@@ -137,6 +138,7 @@ def _judge(
         ],
         None,
         response_format={"type": "json_object"},
+        temperature=0,
     )
     text = (raw.get("content") or "").strip()
     # 8b judges occasionally wrap JSON in fences or stray text — extract the object.
