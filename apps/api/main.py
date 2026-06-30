@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -164,6 +165,8 @@ def list_creators(q: str = Query(""), limit: int = 20) -> list[dict]:
             "est_cost_inr",
             "est_cost_low_inr",
             "est_cost_high_inr",
+            "cost_basis",
+            "is_short",
         )
         if c in df.columns
     ]
@@ -254,6 +257,8 @@ def get_creator_peers(channel_id: str, k: int = 10) -> dict:
             "est_cost_inr",
             "est_cost_low_inr",
             "est_cost_high_inr",
+            "cost_basis",
+            "is_short",
         )
         if c in peers_df.columns
     ]
@@ -355,6 +360,8 @@ def list_niche_creators(niche: str, k: int = 24) -> list[dict]:
             "est_cost_inr",
             "est_cost_low_inr",
             "est_cost_high_inr",
+            "cost_basis",
+            "is_short",
         )
         if c in sub.columns
     ]
@@ -389,6 +396,7 @@ def _match_records(req: MatchRequest, funnel: dict | None = None) -> list[dict]:
             "mean_views",
             "median_views",
             "mean_duration_seconds",
+            "cost_basis",
         )
         if c in _display().columns
     ]
@@ -432,7 +440,19 @@ def _creator_brief(r: dict) -> dict:
         "median_views": r.get("median_views"),
         "mean_views": r.get("mean_views"),
         "engagement_risk_score": r.get("fraud_risk"),
-        "est_sponsor_cost_inr": [r.get("est_cost_low_inr"), r.get("est_cost_high_inr")],
+        "format": "shorts" if r.get("is_short") else "long-form",
+        "est_sponsor_cost_inr": (
+            None
+            if r.get("cost_basis") in ("insufficient", "unverified")
+            else [r.get("est_cost_low_inr"), r.get("est_cost_high_inr")]
+        ),
+        "cost_note": (
+            "insufficient history (<10 videos) — not enough uploads to price reliably"
+            if r.get("cost_basis") == "insufficient"
+            else "format unverified (no duration data) — can't tell Shorts from long-form to price"
+            if r.get("cost_basis") == "unverified"
+            else None
+        ),
         "is_brand_channel": bool(r.get("is_brand_channel", False)),
     }
 
@@ -448,8 +468,18 @@ def _creator_full(r: dict) -> dict:
         "videos": r.get("video_count"),
         "median_views": r.get("median_views"),
         "mean_views": r.get("mean_views"),
-        "engagement_risk_score": r.get("fraud_risk"),
-        "est_sponsor_cost_inr": r.get("est_sponsored_cost_inr"),
+        "format": "shorts" if r.get("is_short") else "long-form",
+        "engagement_risk_score": (
+            None if r.get("cost_basis") == "insufficient" else r.get("fraud_risk")
+        ),
+        "est_sponsor_cost_inr": (
+            None if r.get("cost_basis") == "insufficient" else r.get("est_sponsored_cost_inr")
+        ),
+        "cost_note": (
+            "insufficient history (<10 videos) — cost and risk not assessed"
+            if r.get("cost_basis") == "insufficient"
+            else None
+        ),
         "niche_slope": r.get("niche_slope"),
     }
 
@@ -545,12 +575,57 @@ def _with_context(msgs: list[dict], context: dict | None) -> list[dict]:
     return [*msgs[:-1], {**last, "content": note + last["content"]}]
 
 
+_MISSING_RE = re.compile(
+    r"why\s+(?:is|isn'?t|are|aren'?t|can'?t\s+i\s+(?:find|see))\b.*?\b"
+    r"(?:in|on|here|present|found|included|listed|available|database|corpus)\b",
+    re.IGNORECASE,
+)
+
+
+# QUOTE_CHARS: name extraction handles straight + curly quotes
+def _missing_channel_reply(msgs: list[dict]) -> str | None:
+    """If the user asks why a named (quoted) channel is absent AND it is genuinely
+    not in the catalog, return fixed bulleted markdown. Otherwise None."""
+    last = msgs[-1]["content"] if msgs else ""
+    if not _MISSING_RE.search(last):
+        return None
+    qm = re.search("[\"'\u201c\u201d\u2018\u2019](.+?)[\"'\u201c\u201d\u2018\u2019]", last)
+    name = qm.group(1).strip() if qm else None
+    if not name:
+        return None  # no quoted name -> can't confirm absence -> let the model answer
+    df = _display()
+    hit = df[df["title"].str.contains(re.escape(name), case=False, na=False)]
+    if not hit.empty:
+        found = str(hit.iloc[0]["title"])
+        return (
+            f"Good news - {found} is indexed in CreatorPulse. "
+            f"Search for it on the Creators page to open the full profile "
+            f"(stats, engagement, niche demand, and peers)."
+        )
+    lines = [
+        f"{name} is not in CreatorPulse. A channel can be missing for a few reasons:",
+        "",
+        "- **Not in the seed snapshot** - the catalogue is a point-in-time Kaggle list "
+        "of about 12,500 Indian channels and does not include every creator (especially "
+        "very large or newer ones).",
+        "- **Filtered out during ingestion** - e.g. a niche, region, or activity threshold.",
+        "- **Channel ID did not resolve** - the ID may have changed or failed to fetch "
+        "from the YouTube Data API.",
+        "",
+        "Periodic updates are planned, so some popular creators may be added later.",
+    ]
+    return "\n".join(lines)
+
+
 @app.post("/chat")
 def post_chat(req: ChatRequest) -> dict:
     msgs = prepare_messages([m.model_dump() for m in req.messages])
     if not msgs:
         raise HTTPException(status_code=400, detail="Send a question to the assistant.")
     msgs = _with_context(msgs, req.context)
+    templated = _missing_channel_reply(msgs)
+    if templated is not None:
+        return {"reply": templated}
     try:
         reply = groq_chat(msgs, tool_executor=_chat_tool_executor)
     except GroqError as e:

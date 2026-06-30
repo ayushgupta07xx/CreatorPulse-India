@@ -38,7 +38,24 @@ from sqlalchemy import create_engine, text
 
 import apps.ml.features as features
 import apps.ml.query_expand as query_expand
-from apps.ml.pricing import CPM, CPM_DEFAULT, integration_cost_range
+from apps.ml.pricing import (
+    _CAP,
+    _MIN_VIDEOS_FOR_PRICING,
+    CPM,
+    CPM_DEFAULT,
+    integration_cost_range,
+)
+
+
+def _cost_basis(lo: float, hi: float) -> str:
+    """Why a range collapsed: both bounds at the Rs50L cap -> "cap";
+    both at the audience floor -> "base"; otherwise a real "range"."""
+    if lo != hi:
+        return "range"
+    if lo >= _CAP:
+        return "cap"
+    return "base"
+
 
 REPO = Path(__file__).resolve().parents[2]
 MODELS_DIR = REPO / "models"
@@ -174,6 +191,32 @@ def attach_est_earnings(df: pd.DataFrame) -> pd.DataFrame:
     df["est_cost_low_inr"] = [x[0] for x in rng]
     df["est_cost_high_inr"] = [x[1] for x in rng]
     df["est_cost_inr"] = [(x[0] + x[1]) / 2.0 for x in rng]
+    df["cost_basis"] = [_cost_basis(lo, hi) for lo, hi in rng]
+    # Shorts flag (catalog-level so every endpoint carries it): avg upload under
+    # 70s reads as Shorts-first. Null duration -> unknown, not Shorts.
+    if "mean_duration_seconds" in df.columns:
+        _d = pd.to_numeric(df["mean_duration_seconds"], errors="coerce")
+        df["is_short"] = (_d < 70).where(_d.notna(), other=False)
+    # Low-video-count guard: one viral upload is not a typical per-video reach,
+    # so a <10-video channel has no defensible price. Suppress the DISPLAYED cost
+    # (range -> null, basis "insufficient") but keep est_cost_inr for budget_fit
+    # ranking math (NaN there would poison final_score).
+    if "video_count" in df.columns:
+        vc = pd.to_numeric(df["video_count"], errors="coerce")
+        thin = vc < _MIN_VIDEOS_FOR_PRICING
+        df.loc[thin, "est_cost_low_inr"] = float("nan")
+        df.loc[thin, "est_cost_high_inr"] = float("nan")
+        df.loc[thin, "cost_basis"] = "insufficient"
+    # Format guard: without per-video duration we can't tell Shorts from long-form,
+    # so the format multiplier (hence the price) is unjustified. Suppress the cost
+    # and mark "unverified". Cost-only -- engagement risk does not depend on format.
+    # Applied after the insufficient guard so a <10-video channel stays "insufficient".
+    if "mean_duration_seconds" in df.columns:
+        dur_na = pd.to_numeric(df["mean_duration_seconds"], errors="coerce").isna()
+        unv = dur_na & (df["cost_basis"] != "insufficient")
+        df.loc[unv, "est_cost_low_inr"] = float("nan")
+        df.loc[unv, "est_cost_high_inr"] = float("nan")
+        df.loc[unv, "cost_basis"] = "unverified"
     return df
 
 
@@ -333,6 +376,13 @@ def match(
         cand = cand[cand["niche"] == niche_filter]
     if funnel is not None:
         funnel["after_niche"] = int(len(cand))
+    # Brand-match excludes <10-video channels: one viral upload is not an
+    # investable track record, so they should not surface as sponsorship recs.
+    if "video_count" in cand.columns:
+        vc = pd.to_numeric(cand["video_count"], errors="coerce").fillna(0)
+        enough = cand[vc >= _MIN_VIDEOS_FOR_PRICING]
+        if not enough.empty:
+            cand = enough.copy()
     if min_views:
         # Reach floor: drop dormant / thin-reach channels so high-budget
         # briefs surface real audience reach. Skipped if it would empty

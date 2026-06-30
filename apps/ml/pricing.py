@@ -53,6 +53,7 @@ SPONSORED_CPM_BAND_DEFAULT = (400, 1000)
 
 _CAP = 5_000_000.0  # Rs50L ceiling on one integration
 _FLOOR_MIN = 5_000.0  # nobody is free
+_MIN_VIDEOS_FOR_PRICING = 10  # <10 uploads -> no stable per-video reach; do not price
 _SHORTS_FORMAT = 0.5  # Shorts pay ~40-60% of long-form; midpoint per 2026 IN rate cards
 _SHORTS_MAX_SECONDS = 70.0
 # Modest base floor by audience size: a large channel commands *some* base even when
