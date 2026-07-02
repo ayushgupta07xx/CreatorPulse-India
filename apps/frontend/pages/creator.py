@@ -22,6 +22,9 @@ from components.about import render_about_sidebar  # noqa: E402
 from apps.ml.pricing import sponsored_cost  # noqa: E402
 
 st.set_page_config(page_title="CreatorPulse — Creator", page_icon="📈", layout="wide")
+from components.ui import apply_theme, plotly_theme  # noqa: E402
+
+apply_theme()
 
 
 @st.cache_data(show_spinner=False, ttl=3600)
@@ -110,7 +113,7 @@ fig.add_trace(
         y=[row["subscriber_count"]],
         mode="markers",
         name="current (measured)",
-        marker={"size": 13, "color": "#2563eb"},
+        marker={"size": 13, "color": "#54E0CE"},
     )
 )
 if fc is not None:
@@ -125,11 +128,11 @@ if fc is not None:
             y=row["subscriber_count"] * mult,
             mode="lines",
             name="niche-trend projection",
-            line={"dash": "dot", "color": "#9333ea"},
+            line={"dash": "dot", "color": "#9C8BFF"},
         )
     )
 fig.update_layout(height=320, yaxis_title="subscribers", margin={"t": 10, "b": 10})
-st.plotly_chart(fig, width="stretch")
+st.plotly_chart(plotly_theme(fig), width="stretch")
 st.caption(
     "Solid point = current measured subscribers. Dotted line = a 12-week projection "
     "scaled from the (simulated) niche-demand trend — not measured channel history. "
@@ -170,7 +173,7 @@ if fc is not None:
             fill="tonexty",
             line={"width": 0},
             name="80% interval",
-            fillcolor="rgba(37,99,235,0.15)",
+            fillcolor="rgba(84,224,206,0.15)",
         )
     )
     nfig.add_trace(
@@ -179,13 +182,13 @@ if fc is not None:
             y=f["yhat"],
             mode="lines",
             name="weekly views",
-            line={"color": "#2563eb"},
+            line={"color": "#54E0CE"},
         )
     )
     if 0 < split < len(f):
-        nfig.add_vline(x=f["ds"].iloc[split], line_dash="dash", line_color="#888888")
+        nfig.add_vline(x=f["ds"].iloc[split], line_dash="dash", line_color="#8A8AA0")
     nfig.update_layout(height=300, yaxis_title="weekly views", margin={"t": 10, "b": 10})
-    st.plotly_chart(nfig, width="stretch")
+    st.plotly_chart(plotly_theme(nfig), width="stretch")
     slope = nb["slopes"].get(row["niche"]) or 0.0
     direction = "accelerating" if slope > 0 else "declining"
     st.caption(

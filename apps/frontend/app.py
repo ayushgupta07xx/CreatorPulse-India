@@ -1,9 +1,21 @@
 """CreatorPulse India — Streamlit entry point (landing + About)."""
 
-import streamlit as st
-from components.about import render_about_sidebar
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_FRONTEND = Path(__file__).resolve().parents[0]
+for _p in (str(_REPO_ROOT), str(_FRONTEND)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+import streamlit as st  # noqa: E402
+from components.about import render_about_sidebar  # noqa: E402
 
 st.set_page_config(page_title="CreatorPulse India", page_icon="📊", layout="wide")
+from components.ui import apply_theme  # noqa: E402
+
+apply_theme()
 
 st.title("📊 CreatorPulse India")
 st.markdown(

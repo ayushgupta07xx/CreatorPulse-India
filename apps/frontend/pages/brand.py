@@ -20,6 +20,9 @@ from components import analytics, data  # noqa: E402
 from components.about import render_about_sidebar  # noqa: E402
 
 st.set_page_config(page_title="CreatorPulse — Brands", page_icon="📊", layout="wide")
+from components.ui import apply_theme  # noqa: E402
+
+apply_theme()
 
 MAX_SHORTLIST = 5
 SAMPLE_BRIEF = (
@@ -228,7 +231,7 @@ brief_used = st.session_state.get("brand_brief", "")
 
 if results:
     res = pd.DataFrame(results)
-    join_cols = ["channel_id", "title", "thumbnail_url", "subscriber_count", "mean_views"]
+    join_cols = ["channel_id", "thumbnail_url", "subscriber_count", "mean_views"]
     res = res.merge(creators_df[join_cols], on="channel_id", how="left")
     signals = top_fraud_signals(3)
     current_short = shortlist_ids(session_id)
