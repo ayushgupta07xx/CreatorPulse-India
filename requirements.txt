@@ -7,3 +7,4 @@ psycopg2-binary==2.9.12
 python-dotenv==1.2.2
 joblib==1.5.3
 requests==2.34.2
+posthog==7.18.0
